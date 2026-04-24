@@ -33,11 +33,11 @@ export default function ChatsPage() {
     <WorkspaceContainer>
       <WorkspaceHeader></WorkspaceHeader>
       <WorkspaceBody>
-        <div className="flex size-full flex-col px-4 pb-4 pt-3">
-          <header className="flex shrink-0 items-center justify-center pt-6">
+        <div className="flex size-full flex-col px-3 pb-3 pt-2 md:px-4">
+          <header className="flex shrink-0 items-center justify-center pt-3">
             <Input
               type="search"
-              className="h-12 w-full max-w-(--container-width-md) rounded-2xl border-sky-200/70 bg-white/85 text-xl shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+              className="h-12 w-full max-w-(--container-width-lg) rounded-2xl border-sky-200/70 bg-white/85 text-xl shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
               placeholder={t.chats.searchChats}
               autoFocus
               value={search}
@@ -46,7 +46,7 @@ export default function ChatsPage() {
           </header>
           <main className="min-h-0 flex-1 pt-4">
             <ScrollArea className="size-full rounded-3xl border border-sky-200/70 bg-white/72 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur">
-              <div className="mx-auto flex size-full max-w-(--container-width-md) flex-col px-2">
+              <div className="mx-auto flex size-full max-w-(--container-width-lg) flex-col px-2">
                 {filteredThreads?.map((thread) => (
                   <Link
                     key={thread.thread_id}

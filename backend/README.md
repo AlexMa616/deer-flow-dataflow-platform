@@ -201,7 +201,7 @@ make gateway
 
 Direct access: LangGraph at http://localhost:2024, Gateway at http://localhost:8001
 
-Frontend dev command (when running separately): `pnpm exec next dev --turbo --port 3000`.
+Frontend dev command (when running separately): `pnpm exec next dev --webpack --port 3000`.
 
 ---
 

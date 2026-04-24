@@ -3,6 +3,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 import duckdb
 from fastapi import APIRouter
@@ -66,6 +67,13 @@ class VectorSummary(BaseModel):
     documents: int
 
 
+class RequestGuardrails(BaseModel):
+    """Request guardrails inferred from upstream model configuration."""
+
+    blocked_chinese_model_names: list[str]
+    message: str | None
+
+
 class SystemRecommendation(BaseModel):
     """System optimization recommendation."""
 
@@ -87,6 +95,7 @@ class SystemOverview(BaseModel):
     models: ModelSummary
     extensions: ExtensionsSummary
     vector: VectorSummary
+    request_guardrails: RequestGuardrails
     recommendations: list[SystemRecommendation]
 
 
@@ -94,6 +103,8 @@ _CACHE_TTL_SECONDS = 8
 _THREAD_STATS_CACHE: tuple[float, ThreadStats] | None = None
 _VECTOR_SUMMARY_CACHE: tuple[float, VectorSummary] | None = None
 _MEMORY_SUMMARY_CACHE: tuple[float, MemorySummary] | None = None
+_REQUEST_GUARDRAILS_CACHE: tuple[float, RequestGuardrails] | None = None
+_UPSTREAM_HOSTS_BLOCKING_CHINESE = ("xxxaicode.com",)
 
 
 def _collect_storage_stats(path: Path) -> StorageStats:
@@ -195,6 +206,52 @@ def _get_memory_summary_cached(memory_config) -> MemorySummary:
     return summary
 
 
+def _host_blocks_chinese(base_url: str | None) -> bool:
+    if not base_url:
+        return False
+    hostname = urlparse(str(base_url)).hostname or ""
+    return any(
+        hostname == blocked_host or hostname.endswith(f".{blocked_host}")
+        for blocked_host in _UPSTREAM_HOSTS_BLOCKING_CHINESE
+    )
+
+
+def _model_uses_responses_api(model: object) -> bool:
+    return bool(
+        getattr(model, "use_responses_api", False)
+        or getattr(model, "output_version", None) == "responses/v1"
+    )
+
+
+def _get_request_guardrails() -> RequestGuardrails:
+    app_config = get_app_config()
+    blocked_chinese_model_names = [
+        model.name
+        for model in app_config.models
+        if _host_blocks_chinese(getattr(model, "base_url", None))
+        and not _model_uses_responses_api(model)
+    ]
+    if blocked_chinese_model_names:
+        return RequestGuardrails(
+            blocked_chinese_model_names=blocked_chinese_model_names,
+            message=(
+                "当前配置的上游模型接口会拦截中文提示词或中文文档内容。"
+                "请切换到支持中文的接口后再发送这类请求。"
+            ),
+        )
+    return RequestGuardrails(blocked_chinese_model_names=[], message=None)
+
+
+def _get_request_guardrails_cached() -> RequestGuardrails:
+    global _REQUEST_GUARDRAILS_CACHE
+    now = time.monotonic()
+    if _REQUEST_GUARDRAILS_CACHE and now - _REQUEST_GUARDRAILS_CACHE[0] < _CACHE_TTL_SECONDS:
+        return _REQUEST_GUARDRAILS_CACHE[1]
+    summary = _get_request_guardrails()
+    _REQUEST_GUARDRAILS_CACHE = (now, summary)
+    return summary
+
+
 def _build_recommendations(
     models: ModelSummary,
     extensions: ExtensionsSummary,
@@ -202,6 +259,7 @@ def _build_recommendations(
     threads: ThreadStats,
     sandbox_mode: str,
     vector: VectorSummary,
+    request_guardrails: RequestGuardrails,
 ) -> list[SystemRecommendation]:
     recommendations: list[SystemRecommendation] = []
 
@@ -285,6 +343,19 @@ def _build_recommendations(
             )
         )
 
+    if request_guardrails.blocked_chinese_model_names:
+        recommendations.append(
+            SystemRecommendation(
+                id="upstream_blocks_chinese",
+                level="warn",
+                title="当前模型接口会拦截中文请求",
+                detail=(
+                    "已检测到当前配置的上游接口会拦截中文提示词或中文文档。"
+                    "如需处理中文内容，请更换支持中文的模型服务地址。"
+                ),
+            )
+        )
+
     return recommendations
 
 
@@ -341,6 +412,7 @@ async def get_system_overview() -> SystemOverview:
     thread_stats = _get_thread_stats_cached()
     sandbox_mode = _get_sandbox_mode()
     vector_summary = _get_vector_summary_cached()
+    request_guardrails = _get_request_guardrails_cached()
 
     recommendations = _build_recommendations(
         models=model_summary,
@@ -349,6 +421,7 @@ async def get_system_overview() -> SystemOverview:
         threads=thread_stats,
         sandbox_mode=sandbox_mode,
         vector=vector_summary,
+        request_guardrails=request_guardrails,
     )
 
     return SystemOverview(
@@ -361,6 +434,7 @@ async def get_system_overview() -> SystemOverview:
         models=model_summary,
         extensions=extensions_summary,
         vector=vector_summary,
+        request_guardrails=request_guardrails,
         recommendations=recommendations,
     )
 

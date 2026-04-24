@@ -17,14 +17,20 @@ import type {
   AgentThreadState,
 } from "./types";
 
+const THREAD_HISTORY_STATE_LIMIT = 500;
+
 export function useThreadStream({
   threadId,
   isNewThread,
+  onCustomEvent,
   onFinish,
+  onError,
 }: {
   isNewThread: boolean;
   threadId: string | null | undefined;
+  onCustomEvent?: (event: unknown) => void;
   onFinish?: (state: AgentThreadState) => void;
+  onError?: (error: unknown) => void;
 }) {
   const queryClient = useQueryClient();
   const updateSubtask = useUpdateSubtask();
@@ -32,10 +38,11 @@ export function useThreadStream({
     client: getAPIClient(),
     assistantId: "lead_agent",
     threadId: isNewThread ? undefined : threadId,
-    reconnectOnMount: true,
-    fetchStateHistory: true,
+    reconnectOnMount: !isNewThread,
+    // The stream object exposes `history`, so the SDK requires this to stay enabled.
+    fetchStateHistory: { limit: THREAD_HISTORY_STATE_LIMIT },
     onCustomEvent(event: unknown) {
-      console.info(event);
+      onCustomEvent?.(event);
       if (
         typeof event === "object" &&
         event !== null &&
@@ -73,6 +80,9 @@ export function useThreadStream({
           });
         },
       );
+    },
+    onError(error) {
+      onError?.(error);
     },
   });
   return thread;

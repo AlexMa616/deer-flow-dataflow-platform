@@ -190,46 +190,36 @@ const EVENT_QUERY_POOL: Record<string, string[]> = {
 };
 
 const DAILY_QUERY_POOL = [
-  "macos style cityscape wallpaper 4k",
-  "apple style city skyline wallpaper",
-  "mac wallpaper nature landscape 5k",
-  "mac wallpaper underwater scene blue",
-  "futuristic technology wallpaper high resolution",
-  "digital neon interface artwork",
-  "clean minimal gradient wallpaper",
-  "ocean coastline aerial wallpaper 4k",
+  "premium natural landscape wallpaper 5k",
+  "mountain valley wallpaper 5k",
+  "city skyline wallpaper premium 4k",
+  "sunset coastline wallpaper cinematic 4k",
+  "golden hour lake mountain wallpaper",
+  "modern city dusk wallpaper high resolution",
+  "forest ridge wallpaper 5k",
+  "coastal sunset wallpaper high resolution",
 ];
 
 const MODE_QUERY_POOL: Record<VisualMode, string[]> = {
   tech: [
-    "futuristic ui dashboard wallpaper",
-    "cyberpunk neon technology wallpaper 4k",
-    "mac style tech gradient wallpaper",
+    "premium city skyline wallpaper 4k",
+    "modern city night wallpaper",
+    "urban dusk wallpaper cinematic high resolution",
   ],
   gemini: [
-    "macos cityscape wallpaper clean style",
-    "apple style modern city night wallpaper",
-    "minimal premium geometric wallpaper high resolution",
+    "mountain landscape wallpaper 5k",
+    "yosemite valley wallpaper high resolution",
+    "forest ridge wallpaper premium 4k",
   ],
   ocean: [
-    "mac wallpaper underwater ocean scene",
-    "blue ocean beach aerial wallpaper 4k",
-    "sea wave tropical coast wallpaper high resolution",
+    "sunset coastline wallpaper 4k",
+    "golden hour desert wallpaper high resolution",
+    "catalina island sunset wallpaper premium",
   ],
 };
 
 const FALLBACK_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | "from">[]> = {
   tech: [
-    {
-      imageUrl:
-        "https://512pixels.net/downloads/macos-wallpapers/15-Sequoia-Light-6K.jpg",
-      title: "macOS Sequoia Light 6K",
-      provider: "512pixels",
-      license: "Editorial",
-      attribution: "Apple / 512pixels",
-      sourceUrl:
-        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
-    },
     {
       imageUrl:
         "https://images.unsplash.com/photo-1654832544261-d9639df991de?auto=format&fit=crop&w=1800&q=82",
@@ -239,18 +229,6 @@ const FALLBACK_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | "fro
       attribution: "Andres Siimon",
       sourceUrl:
         "https://unsplash.com/photos/a-city-skyline-at-night-3Qzf-U0XfCE",
-    },
-  ],
-  gemini: [
-    {
-      imageUrl:
-        "https://512pixels.net/downloads/macos-wallpapers/14-Sonoma-Light.jpg",
-      title: "macOS Sonoma Light",
-      provider: "512pixels",
-      license: "Editorial",
-      attribution: "Apple / 512pixels",
-      sourceUrl:
-        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
     {
       imageUrl:
@@ -263,11 +241,11 @@ const FALLBACK_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | "fro
         "https://unsplash.com/photos/rooftops-of-houses-with-city-skyline-in-background-S21CrCFzsSc",
     },
   ],
-  ocean: [
+  gemini: [
     {
       imageUrl:
-        "https://512pixels.net/downloads/macos-wallpapers/10-9.jpg",
-      title: "macOS Mavericks Wave",
+        "https://512pixels.net/downloads/macos-wallpapers-6k/10-11-6k.jpg",
+      title: "El Capitan Cliffs",
       provider: "512pixels",
       license: "Editorial",
       attribution: "Apple / 512pixels",
@@ -276,13 +254,35 @@ const FALLBACK_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | "fro
     },
     {
       imageUrl:
-        "https://images.unsplash.com/photo-1752934654942-38e8b54259b6?auto=format&fit=crop&w=1800&q=82",
-      title: "Underwater Blue World",
-      provider: "Unsplash",
-      license: "Unsplash",
-      attribution: "Natalia Blauth",
+        "https://512pixels.net/downloads/macos-wallpapers/10-10.jpg",
+      title: "Yosemite Valley",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
       sourceUrl:
-        "https://unsplash.com/photos/a-vibrant-blue-fish-swims-gracefully-underwater-ggw69SgTlNM",
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
+    },
+  ],
+  ocean: [
+    {
+      imageUrl:
+        "https://512pixels.net/downloads/macos-wallpapers/10-15-Day.jpg",
+      title: "Catalina Coast Day",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
+      sourceUrl:
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
+    },
+    {
+      imageUrl:
+        "https://512pixels.net/downloads/macos-wallpapers-6k/10-14-Day-6k.jpg",
+      title: "Mojave Desert Day",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
+      sourceUrl:
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
   ],
 };
@@ -313,43 +313,45 @@ const FAST_REFRESH_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | 
   gemini: [
     {
       imageUrl:
-        "https://images.unsplash.com/photo-1754972722440-f7e7f366bc01?auto=format&fit=crop&w=1600&q=78",
-      title: "Urban Rooftop Skyline",
-      provider: "Unsplash",
-      license: "Unsplash",
-      attribution: "Mantas Hesthaven",
+        "https://512pixels.net/downloads/macos-wallpapers-6k/10-11-6k.jpg",
+      title: "El Capitan Cliffs",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
       sourceUrl:
-        "https://unsplash.com/photos/rooftops-of-houses-with-city-skyline-in-background-S21CrCFzsSc",
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
     {
       imageUrl:
-        "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1600&q=78",
-      title: "Nature Landscape",
-      provider: "Unsplash",
-      license: "Unsplash",
-      attribution: "Alejandro Escamilla",
-      sourceUrl: "https://unsplash.com/photos/yC-Yzbqy7PY",
+        "https://512pixels.net/downloads/macos-wallpapers-6k/10-13-6k.jpg",
+      title: "High Sierra Dusk",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
+      sourceUrl:
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
   ],
   ocean: [
     {
       imageUrl:
-        "https://images.unsplash.com/photo-1752934654942-38e8b54259b6?auto=format&fit=crop&w=1600&q=78",
-      title: "Underwater Blue World",
-      provider: "Unsplash",
-      license: "Unsplash",
-      attribution: "Natalia Blauth",
+        "https://512pixels.net/downloads/macos-wallpapers/10-15-Day.jpg",
+      title: "Catalina Coast Day",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
       sourceUrl:
-        "https://unsplash.com/photos/a-vibrant-blue-fish-swims-gracefully-underwater-ggw69SgTlNM",
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
     {
       imageUrl:
-        "https://images.unsplash.com/photo-1459743421941-c1caaf5a232f?auto=format&fit=crop&w=1600&q=78",
-      title: "Deep Sea Fish",
-      provider: "Unsplash",
-      license: "Unsplash",
-      attribution: "Francesco Ungaro",
-      sourceUrl: "https://unsplash.com/photos/fishes-underwater-IjzFb5zEz68",
+        "https://512pixels.net/downloads/macos-wallpapers/10-15-Night.jpg",
+      title: "Catalina Coast Night",
+      provider: "512pixels",
+      license: "Editorial",
+      attribution: "Apple / 512pixels",
+      sourceUrl:
+        "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
     },
   ],
 };
@@ -357,8 +359,8 @@ const FAST_REFRESH_IMAGES: Record<VisualMode, Omit<ThemeImagePayload, "query" | 
 const DEFAULT_FALLBACK_IMAGES: Omit<ThemeImagePayload, "query" | "from">[] = [
   {
     imageUrl:
-      "https://512pixels.net/downloads/macos-wallpapers/15-Sequoia-Light-6K.jpg",
-    title: "macOS Sequoia Light 6K",
+      "https://512pixels.net/downloads/macos-wallpapers/10-15-Day.jpg",
+    title: "Catalina Coast Day",
     provider: "512pixels",
     license: "Editorial",
     attribution: "Apple / 512pixels",
@@ -366,8 +368,8 @@ const DEFAULT_FALLBACK_IMAGES: Omit<ThemeImagePayload, "query" | "from">[] = [
   },
   {
     imageUrl:
-      "https://512pixels.net/downloads/macos-wallpapers/14-Sonoma-Light.jpg",
-    title: "macOS Sonoma Light",
+      "https://512pixels.net/downloads/macos-wallpapers/10-15-Night.jpg",
+    title: "Catalina Coast Night",
     provider: "512pixels",
     license: "Editorial",
     attribution: "Apple / 512pixels",
@@ -375,17 +377,8 @@ const DEFAULT_FALLBACK_IMAGES: Omit<ThemeImagePayload, "query" | "from">[] = [
   },
   {
     imageUrl:
-      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1800&q=82",
-    title: "Nature Landscape",
-    provider: "Unsplash",
-    license: "Unsplash",
-    attribution: "Alejandro Escamilla",
-    sourceUrl: "https://unsplash.com/photos/yC-Yzbqy7PY",
-  },
-  {
-    imageUrl:
-      "https://512pixels.net/downloads/macos-wallpapers/10-9.jpg",
-    title: "macOS Mavericks Wave",
+      "https://512pixels.net/downloads/macos-wallpapers-6k/10-14-Day-6k.jpg",
+    title: "Mojave Desert Day",
     provider: "512pixels",
     license: "Editorial",
     attribution: "Apple / 512pixels",
@@ -393,22 +386,39 @@ const DEFAULT_FALLBACK_IMAGES: Omit<ThemeImagePayload, "query" | "from">[] = [
   },
   {
     imageUrl:
-      "https://images.unsplash.com/photo-1752934654942-38e8b54259b6?auto=format&fit=crop&w=1800&q=82",
-    title: "Mac Underwater Blue",
-    provider: "Unsplash",
-    license: "Unsplash",
-    attribution: "Natalia Blauth",
-    sourceUrl:
-      "https://unsplash.com/photos/a-vibrant-blue-fish-swims-gracefully-underwater-ggw69SgTlNM",
+      "https://512pixels.net/downloads/macos-wallpapers-6k/10-11-6k.jpg",
+    title: "El Capitan Cliffs",
+    provider: "512pixels",
+    license: "Editorial",
+    attribution: "Apple / 512pixels",
+    sourceUrl: "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
   },
   {
     imageUrl:
-      "https://images.unsplash.com/photo-1459743421941-c1caaf5a232f?auto=format&fit=crop&w=1800&q=82",
-    title: "Mac Deep Sea Fish",
+      "https://512pixels.net/downloads/macos-wallpapers/10-10.jpg",
+    title: "Yosemite Valley",
+    provider: "512pixels",
+    license: "Editorial",
+    attribution: "Apple / 512pixels",
+    sourceUrl: "https://512pixels.net/projects/default-mac-wallpapers-in-5k/",
+  },
+  {
+    imageUrl:
+      "https://images.unsplash.com/photo-1654832544261-d9639df991de?auto=format&fit=crop&w=1800&q=82",
+      title: "City Skyline Night",
     provider: "Unsplash",
     license: "Unsplash",
-    attribution: "Francesco Ungaro",
-    sourceUrl: "https://unsplash.com/photos/fishes-underwater-IjzFb5zEz68",
+    attribution: "Andres Siimon",
+    sourceUrl: "https://unsplash.com/photos/a-city-skyline-at-night-3Qzf-U0XfCE",
+  },
+  {
+    imageUrl:
+      "https://images.unsplash.com/photo-1754972722440-f7e7f366bc01?auto=format&fit=crop&w=1800&q=82",
+    title: "Urban Rooftop Skyline",
+    provider: "Unsplash",
+    license: "Unsplash",
+    attribution: "Mantas Hesthaven",
+    sourceUrl: "https://unsplash.com/photos/rooftops-of-houses-with-city-skyline-in-background-S21CrCFzsSc",
   },
 ];
 
@@ -518,7 +528,7 @@ export async function GET(request: NextRequest) {
   // This avoids remote search latency and random low-quality results.
   const payload = fallbackPayload(
     seed,
-    queries[0] ?? "daily mac wallpaper",
+    queries[0] ?? "daily scenic wallpaper",
     visualMode,
     forceRefresh,
   );

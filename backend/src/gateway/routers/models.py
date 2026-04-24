@@ -13,6 +13,18 @@ class ModelResponse(BaseModel):
     display_name: str | None = Field(None, description="Human-readable name")
     description: str | None = Field(None, description="Model description")
     supports_thinking: bool = Field(default=False, description="Whether model supports thinking mode")
+    supports_plan_mode: bool = Field(
+        default=True,
+        description="Whether model supports heavier plan-mode orchestration",
+    )
+    supports_subagents: bool = Field(
+        default=True,
+        description="Whether model supports delegated subagent workflows",
+    )
+    ultra_uses_plan_mode: bool = Field(
+        default=True,
+        description="Whether Ultra mode should also enable heavier todo/plan orchestration",
+    )
 
 
 class ModelsListResponse(BaseModel):
@@ -63,6 +75,9 @@ async def list_models() -> ModelsListResponse:
             display_name=model.display_name,
             description=model.description,
             supports_thinking=model.supports_thinking,
+            supports_plan_mode=model.supports_plan_mode,
+            supports_subagents=model.supports_subagents,
+            ultra_uses_plan_mode=model.ultra_uses_plan_mode,
         )
         for model in config.models
     ]
@@ -107,4 +122,7 @@ async def get_model(model_name: str) -> ModelResponse:
         display_name=model.display_name,
         description=model.description,
         supports_thinking=model.supports_thinking,
+        supports_plan_mode=model.supports_plan_mode,
+        supports_subagents=model.supports_subagents,
+        ultra_uses_plan_mode=model.ultra_uses_plan_mode,
     )

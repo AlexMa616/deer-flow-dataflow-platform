@@ -18,4 +18,5 @@ export interface AgentThreadContext extends Record<string, unknown> {
   thinking_enabled: boolean;
   is_plan_mode: boolean;
   subagent_enabled: boolean;
+  max_concurrent_subagents?: number;
 }

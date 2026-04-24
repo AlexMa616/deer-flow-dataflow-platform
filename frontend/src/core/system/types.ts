@@ -36,6 +36,11 @@ export interface VectorSummary {
   documents: number;
 }
 
+export interface RequestGuardrails {
+  blocked_chinese_model_names: string[];
+  message: string | null;
+}
+
 export interface SystemRecommendation {
   id: string;
   level: SystemRecommendationLevel;
@@ -53,5 +58,6 @@ export interface SystemOverview {
   models: ModelSummary;
   extensions: ExtensionsSummary;
   vector: VectorSummary;
+  request_guardrails: RequestGuardrails;
   recommendations: SystemRecommendation[];
 }

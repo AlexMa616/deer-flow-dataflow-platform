@@ -1,7 +1,7 @@
+from src.subagents.config import SubagentConfig
+
 from .bash_agent import BASH_AGENT_CONFIG
 from .general_purpose import GENERAL_PURPOSE_CONFIG
-
-from src.subagents.config import SubagentConfig
 
 DATA_QUALITY_CONFIG = SubagentConfig(
     name="data-quality",

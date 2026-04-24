@@ -1,12 +1,24 @@
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
+
 from .models import (
-    create_user, get_user_by_username, get_user_by_id,
-    get_all_users, update_user_status, update_user_role,
-    update_last_login, delete_user, init_db,
+    create_user,
+    delete_user,
+    get_all_users,
+    get_user_by_id,
+    get_user_by_username,
+    init_db,
+    update_last_login,
+    update_user_role,
+    update_user_status,
 )
-from .security import verify_password, get_password_hash, create_access_token, decode_access_token
+from .security import (
+    create_access_token,
+    decode_access_token,
+    get_password_hash,
+    verify_password,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
@@ -18,7 +30,7 @@ init_db()
 
 class RegisterRequest(BaseModel):
     username: str
-    email: str
+    email: EmailStr
     password: str
 
 class LoginRequest(BaseModel):
@@ -60,7 +72,9 @@ async def require_admin(user: dict = Depends(get_current_user)):
 
 @router.post("/register", response_model=TokenResponse)
 async def register(req: RegisterRequest):
-    if len(req.username) < 2:
+    username = req.username.strip()
+    email = str(req.email).strip().lower()
+    if len(username) < 2:
         raise HTTPException(status_code=400, detail="用户名至少 2 个字符")
     if len(req.password) < 6:
         raise HTTPException(status_code=400, detail="密码至少 6 个字符")
@@ -69,7 +83,7 @@ async def register(req: RegisterRequest):
         users = get_all_users()
         role = "admin" if len(users) == 0 else "user"
         hashed = get_password_hash(req.password)
-        user = create_user(req.username, req.email, hashed, role)
+        user = create_user(username, email, hashed, role)
         update_last_login(user["id"])
         token = create_access_token({"user_id": user["id"], "role": user["role"]})
         return TokenResponse(
@@ -81,7 +95,7 @@ async def register(req: RegisterRequest):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest):
-    user = get_user_by_username(req.username)
+    user = get_user_by_username(req.username.strip())
     if not user or not verify_password(req.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     if not user["is_active"]:

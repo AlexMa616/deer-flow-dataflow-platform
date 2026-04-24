@@ -9,8 +9,13 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.gateway.auth.models import create_user, get_db, get_user_by_username, update_user_role
-from src.gateway.auth.security import get_password_hash
+from src.gateway.auth.models import (  # noqa: E402
+    create_user,
+    get_db,
+    get_user_by_username,
+    update_user_role,
+)
+from src.gateway.auth.security import get_password_hash  # noqa: E402
 
 
 def parse_bool(value: str) -> bool:

@@ -1,17 +1,18 @@
+import hashlib
 import json
 import math
 import os
 import uuid
-import hashlib
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import duckdb
 
-from src.config import get_vector_config, get_uploads_config
+from src.config import get_uploads_config, get_vector_config
 from src.embeddings.factory import create_embeddings
 
 

@@ -29,6 +29,7 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "ddgs>=9.10.0",
     "duckdb>=1.4.4",
+    "email-validator>=2.2.0",
 ]
 
 [dependency-groups]

@@ -13,7 +13,7 @@ PORT_PROXY="${PORT_PROXY:-2026}"
 PORT_LANGGRAPH="${PORT_LANGGRAPH:-2024}"
 PORT_GATEWAY="${PORT_GATEWAY:-8001}"
 PORT_FRONTEND="${PORT_FRONTEND:-3000}"
-CLEAN_FRONTEND_CACHE="${DEERFLOW_CLEAN_FRONTEND_CACHE:-1}"
+CLEAN_FRONTEND_CACHE="${DEERFLOW_CLEAN_FRONTEND_CACHE:-0}"
 
 ADMIN_USERNAME="${DEERFLOW_ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${DEERFLOW_ADMIN_PASSWORD:-admin123}"
@@ -142,6 +142,11 @@ wait_for_http() {
   return 1
 }
 
+warm_http() {
+  local url="$1"
+  curl -fsS "$url" >/dev/null 2>&1 || true
+}
+
 start_process() {
   local name="$1"
   local cwd="$2"
@@ -152,7 +157,7 @@ start_process() {
   print "启动 ${name}..."
   (
     cd "$cwd"
-    nohup bash -c 'trap "" INT; exec "$@"' _ "$@" >"$logfile" 2>&1 &
+    nohup bash -c 'trap "" HUP INT; exec "$@"' _ "$@" >"$logfile" 2>&1 </dev/null &
     echo $! >"$pidfile"
   )
 }
@@ -164,6 +169,8 @@ bootstrap_admin() {
   fi
 
   print "初始化管理员账号..."
+  local bootstrap_log="$LOG_DIR/bootstrap-admin.log"
+  : >"$bootstrap_log"
   (
     cd "$BACKEND_DIR"
     # 修复了 PYTHONPATH 问题，确保能找到 src 模块
@@ -173,8 +180,8 @@ bootstrap_admin() {
     DEERFLOW_ADMIN_EMAIL="$ADMIN_EMAIL" \
     DEERFLOW_ADMIN_RESET_PASSWORD="$ADMIN_RESET_PASSWORD" \
     uv run python scripts/bootstrap_admin.py
-  ) >>"$LOG_DIR/bootstrap-admin.log" 2>&1 || {
-    print "管理员初始化失败，继续启动服务（详情见 $LOG_DIR/bootstrap-admin.log）"
+  ) >>"$bootstrap_log" 2>&1 || {
+    print "管理员初始化失败，继续启动服务（详情见 $bootstrap_log）"
   }
 
   if [[ "$ADMIN_USERNAME" == "admin" && "$ADMIN_PASSWORD" == "admin123" ]]; then
@@ -207,15 +214,19 @@ start_all() {
   }
 
   if [[ "$CLEAN_FRONTEND_CACHE" == "1" ]]; then
-    print "清理前端缓存 (.next) 以确保页面样式更新..."
+    print "按需清理前端缓存 (.next)..."
     rm -rf "$FRONTEND_DIR/.next"
   fi
 
-  start_process "frontend" "$FRONTEND_DIR" pnpm exec next dev --port "$PORT_FRONTEND"
+  start_process "frontend" "$FRONTEND_DIR" pnpm exec next dev --webpack --port "$PORT_FRONTEND"
   wait_for_http "http://127.0.0.1:${PORT_FRONTEND}" 60 || {
     print "Frontend 启动失败，请查看 $LOG_DIR/frontend.log"
     exit 1
   }
+  print "预热前端路由..."
+  warm_http "http://127.0.0.1:${PORT_FRONTEND}/login"
+  warm_http "http://127.0.0.1:${PORT_FRONTEND}/workspace/chats/new"
+  warm_http "http://127.0.0.1:${PORT_FRONTEND}/workspace/vibe/new"
 
   start_process "nginx" "$ROOT_DIR" nginx -g "daemon off;" -c "$NGINX_CONF" -p "$ROOT_DIR"
   wait_for_http "http://127.0.0.1:${PORT_PROXY}/api/health" 40 || {

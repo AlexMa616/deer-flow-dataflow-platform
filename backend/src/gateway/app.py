@@ -6,7 +6,20 @@ from fastapi import FastAPI
 
 from src.gateway.config import get_gateway_config
 from src.gateway.ops.middleware import ops_middleware
-from src.gateway.routers import artifacts, health, mcp, memory, models, semantic, skills, system, uploads
+from src.gateway.routers import (
+    artifacts,
+    health,
+    mcp,
+    memory,
+    models,
+    semantic,
+    skills,
+    system,
+    terminal,
+    transcript,
+    uploads,
+    workflows,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -103,6 +116,14 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "name": "semantic",
                 "description": "Semantic search and vector index operations",
             },
+            {
+                "name": "terminal",
+                "description": "Interactive workspace terminal sessions for thread-based coding workbenches",
+            },
+            {
+                "name": "workflows",
+                "description": "Persist and update thread-scoped workflow runs",
+            },
         ],
     )
 
@@ -131,6 +152,15 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     # Semantic API is mounted at /api/semantic
     app.include_router(semantic.router)
 
+    # Terminal API is mounted at /api/threads/{thread_id}/terminal
+    app.include_router(terminal.router)
+
+    # Transcript API is mounted at /api/threads/{thread_id}/transcript
+    app.include_router(transcript.router)
+
+    # Workflow runs API is mounted at /api/threads/{thread_id}/workflow-runs
+    app.include_router(workflows.router)
+
     # Health API is mounted at /api/health
     app.include_router(health.router)
 
@@ -139,6 +169,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Auth router
     from src.gateway.auth.router import router as auth_router
+
     app.include_router(auth_router)
 
     @app.get("/health", tags=["health"])

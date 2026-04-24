@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.config.extensions_config import ExtensionsConfig
 from src.config.memory_config import load_memory_config_from_dict
 from src.config.model_config import ModelConfig
+from src.config.ops_config import load_ops_config_from_dict
 from src.config.sandbox_config import SandboxConfig
 from src.config.skills_config import SkillsConfig
 from src.config.summarization_config import load_summarization_config_from_dict
@@ -16,7 +17,6 @@ from src.config.title_config import load_title_config_from_dict
 from src.config.tool_config import ToolConfig, ToolGroupConfig
 from src.config.uploads_config import load_uploads_config_from_dict
 from src.config.vector_config import load_vector_config_from_dict
-from src.config.ops_config import load_ops_config_from_dict
 
 load_dotenv()
 

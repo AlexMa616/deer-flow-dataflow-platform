@@ -29,12 +29,12 @@ CONVERTIBLE_EXTENSIONS = {
 
 ANALYSIS_PROMPT = """You are a content analyst. Summarize the document and extract signals.
 Return ONLY valid JSON with this schema:
-{
+{{
   "summary": "1-2 sentence summary",
   "keywords": ["keyword1", "keyword2", "..."],
   "language": "ISO language name (e.g., Chinese, English)",
   "highlights": ["short bullet", "short bullet"]
-}
+}}
 Keep it concise and factual.
 Document:
 {content}

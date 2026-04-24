@@ -39,19 +39,19 @@ export function Hero({ className }: { className?: string }) {
         <h1 className="flex items-center gap-2 text-4xl font-bold md:text-6xl">
           <WordRotate
             words={[
-              "Deep Research",
-              "Collect Data",
-              "Analyze Data",
-              "Generate Webpages",
-              "Vibe Coding",
-              "Generate Slides",
-              "Generate Images",
-              "Generate Podcasts",
-              "Generate Videos",
-              "Generate Songs",
-              "Organize Emails",
-              "Do Anything",
-              "Learn Anything",
+              "Project Workflows",
+              "Research Threads",
+              "Design Systems",
+              "Knowledge Libraries",
+              "Skills & Plugins",
+              "Automation Loops",
+              "Creative Pipelines",
+              "Team Workspaces",
+              "Planning Boards",
+              "Review Sessions",
+              "Asset Libraries",
+              "Operational Memory",
+              "Shared Context",
             ]}
           />{" "}
           <div>with DeerFlow</div>
@@ -60,13 +60,13 @@ export function Hero({ className }: { className?: string }) {
           className="mt-8 scale-105 text-center text-2xl text-shadow-sm"
           style={{ color: "rgb(184,184,192)" }}
         >
-          An open-source SuperAgent harness that researches, codes, and creates.
-          With
+          An open-source workspace for projects, research, design systems, and
+          automations. With
           <br />
-          the help of sandboxes, memories, tools, skills and subagents, it
-          handles
+          the help of assets, threads, memories, tools, skills, plugins, and
+          automations, it
           <br />
-          different levels of tasks that could take minutes to hours.
+          helps teams move work from ideas to structured execution.
         </p>
         <Link href="/workspace">
           <Button className="size-lg mt-8 scale-108" size="lg">

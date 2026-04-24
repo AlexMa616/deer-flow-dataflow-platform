@@ -1,3 +1,23 @@
+# DeerFlow Dataflow Platform
+
+This repository is a student/project-oriented derivative of [ByteDance DeerFlow](https://github.com/bytedance/deer-flow).
+It keeps the original MIT license and attribution, while adding project-specific product design, authentication, workflow workspace, persistence, and agent orchestration features for a data-flow processing platform.
+
+## What This Fork Adds
+
+- A redesigned login/register experience with local JWT-based authentication.
+- A workflow workspace for projects, research threads, libraries, design systems, skills, plugins, and automation.
+- Thread-scoped workflow run persistence through `/api/threads/{thread_id}/workflow-runs`.
+- SQLite-backed user management and role/status administration.
+- DuckDB-backed local semantic index for uploads and long-term memory.
+- Transcript, checkpoint, terminal, system overview, and workflow APIs for stronger observability.
+- Multi-agent delegation refinements, subagent limits, safer payload handling, and local sandbox path mapping improvements.
+- Frontend upgrades around Next.js 16, React 19, Tailwind CSS 4, React Query, LangGraph streaming, and responsive workspace UI.
+
+For upstream project history and full original documentation, see [bytedance/deer-flow](https://github.com/bytedance/deer-flow). Additional attribution is recorded in [NOTICE.md](NOTICE.md).
+
+---
+
 # 🦌 DeerFlow - 2.0
 
 DeerFlow (**D**eep **E**xploration and **E**fficient **R**esearch **Flow**) is an open-source **super agent harness** that orchestrates **sub-agents**, **memory**, and **sandboxes** to do almost anything — powered by **extensible skills**.
@@ -37,11 +57,11 @@ Learn more and see **real demos** on our official website.
 
 ### Configuration
 
-1. **Clone the DeerFlow repository**
+1. **Clone this fork**
 
    ```bash
-   git clone https://github.com/bytedance/deer-flow.git
-   cd deer-flow
+   git clone https://github.com/AlexMa616/deer-flow-dataflow-platform.git
+   cd deer-flow-dataflow-platform
    ```
 
 2. **Generate local configuration files**
@@ -134,7 +154,7 @@ If you prefer running services locally:
 
 4. **Access**: http://localhost:2026
 
-Frontend dev uses `next dev --turbo --port 3000` (the start script runs this via `pnpm exec`).
+Frontend dev uses `next dev --webpack --port 3000` (the start script runs this via `pnpm exec`).
 
 ### Advanced
 #### Sandbox Mode

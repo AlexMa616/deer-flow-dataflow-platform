@@ -1,6 +1,8 @@
 import re
+import time
+from typing import Annotated
 
-from langchain.tools import ToolRuntime, tool
+from langchain.tools import InjectedToolCallId, ToolRuntime, tool
 from langgraph.typing import ContextT
 
 from src.agents.thread_state import ThreadDataState, ThreadState
@@ -12,6 +14,7 @@ from src.sandbox.exceptions import (
 )
 from src.sandbox.sandbox import Sandbox
 from src.sandbox.sandbox_provider import get_sandbox_provider
+from src.tools.events import emit_tool_error, emit_tool_result, emit_tool_start
 
 
 def replace_virtual_path(path: str, thread_data: ThreadDataState | None) -> str:
@@ -230,7 +233,12 @@ def ensure_thread_directories_exist(runtime: ToolRuntime[ContextT, ThreadState] 
 
 
 @tool("bash", parse_docstring=True)
-def bash_tool(runtime: ToolRuntime[ContextT, ThreadState], description: str, command: str) -> str:
+def bash_tool(
+    runtime: ToolRuntime[ContextT, ThreadState],
+    description: str,
+    command: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> str:
     """Execute a bash command in a Linux environment.
 
 
@@ -241,27 +249,87 @@ def bash_tool(runtime: ToolRuntime[ContextT, ThreadState], description: str, com
         description: Explain why you are running this command in short words. ALWAYS PROVIDE THIS PARAMETER FIRST.
         command: The bash command to execute. Always use absolute paths for files and directories.
     """
+    started_at = time.perf_counter()
+    display_command = command
+    emit_tool_start(
+        "bash",
+        tool_call_id=tool_call_id,
+        summary=description,
+        command=display_command,
+    )
+
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
         if is_local_sandbox(runtime):
             thread_data = get_thread_data(runtime)
             command = replace_virtual_paths_in_command(command, thread_data)
-        return sandbox.execute_command(command)
+        result = sandbox.execute_command(command)
+        if result.startswith("Error:"):
+            emit_tool_error(
+                "bash",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error=result,
+                command=display_command,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
+        else:
+            emit_tool_result(
+                "bash",
+                tool_call_id=tool_call_id,
+                summary=description,
+                preview=result,
+                command=display_command,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
+        return result
     except SandboxError as e:
-        return f"Error: {e}"
+        error = f"Error: {e}"
+        emit_tool_error(
+            "bash",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            command=display_command,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except Exception as e:
-        return f"Error: Unexpected error executing command: {type(e).__name__}: {e}"
+        error = f"Error: Unexpected error executing command: {type(e).__name__}: {e}"
+        emit_tool_error(
+            "bash",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            command=display_command,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
 
 
 @tool("ls", parse_docstring=True)
-def ls_tool(runtime: ToolRuntime[ContextT, ThreadState], description: str, path: str) -> str:
+def ls_tool(
+    runtime: ToolRuntime[ContextT, ThreadState],
+    description: str,
+    path: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> str:
     """List the contents of a directory up to 2 levels deep in tree format.
 
     Args:
         description: Explain why you are listing this directory in short words. ALWAYS PROVIDE THIS PARAMETER FIRST.
         path: The **absolute** path to the directory to list.
     """
+    started_at = time.perf_counter()
+    display_path = path
+    emit_tool_start(
+        "ls",
+        tool_call_id=tool_call_id,
+        summary=description,
+        path=display_path,
+    )
+
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
@@ -269,17 +337,60 @@ def ls_tool(runtime: ToolRuntime[ContextT, ThreadState], description: str, path:
             thread_data = get_thread_data(runtime)
             path = replace_virtual_path(path, thread_data)
         children = sandbox.list_dir(path)
-        if not children:
-            return "(empty)"
-        return "\n".join(children)
+        result = "(empty)" if not children else "\n".join(children)
+        emit_tool_result(
+            "ls",
+            tool_call_id=tool_call_id,
+            summary=description,
+            preview=result,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return result
     except SandboxError as e:
-        return f"Error: {e}"
+        error = f"Error: {e}"
+        emit_tool_error(
+            "ls",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except FileNotFoundError:
-        return f"Error: Directory not found: {path}"
+        error = f"Error: Directory not found: {display_path}"
+        emit_tool_error(
+            "ls",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except PermissionError:
-        return f"Error: Permission denied: {path}"
+        error = f"Error: Permission denied: {display_path}"
+        emit_tool_error(
+            "ls",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except Exception as e:
-        return f"Error: Unexpected error listing directory: {type(e).__name__}: {e}"
+        error = f"Error: Unexpected error listing directory: {type(e).__name__}: {e}"
+        emit_tool_error(
+            "ls",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
 
 
 @tool("read_file", parse_docstring=True)
@@ -287,6 +398,7 @@ def read_file_tool(
     runtime: ToolRuntime[ContextT, ThreadState],
     description: str,
     path: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     start_line: int | None = None,
     end_line: int | None = None,
 ) -> str:
@@ -298,6 +410,15 @@ def read_file_tool(
         start_line: Optional starting line number (1-indexed, inclusive). Use with end_line to read a specific range.
         end_line: Optional ending line number (1-indexed, inclusive). Use with start_line to read a specific range.
     """
+    started_at = time.perf_counter()
+    display_path = path
+    emit_tool_start(
+        "read_file",
+        tool_call_id=tool_call_id,
+        summary=description,
+        path=display_path,
+    )
+
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
@@ -306,20 +427,81 @@ def read_file_tool(
             path = replace_virtual_path(path, thread_data)
         content = sandbox.read_file(path)
         if not content:
+            emit_tool_result(
+                "read_file",
+                tool_call_id=tool_call_id,
+                summary=description,
+                preview="(empty)",
+                path=display_path,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return "(empty)"
         if start_line is not None and end_line is not None:
             content = "\n".join(content.splitlines()[start_line - 1 : end_line])
+        emit_tool_result(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            preview=content,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
         return content
     except SandboxError as e:
-        return f"Error: {e}"
+        error = f"Error: {e}"
+        emit_tool_error(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except FileNotFoundError:
-        return f"Error: File not found: {path}"
+        error = f"Error: File not found: {display_path}"
+        emit_tool_error(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except PermissionError:
-        return f"Error: Permission denied reading file: {path}"
+        error = f"Error: Permission denied reading file: {display_path}"
+        emit_tool_error(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except IsADirectoryError:
-        return f"Error: Path is a directory, not a file: {path}"
+        error = f"Error: Path is a directory, not a file: {display_path}"
+        emit_tool_error(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except Exception as e:
-        return f"Error: Unexpected error reading file: {type(e).__name__}: {e}"
+        error = f"Error: Unexpected error reading file: {type(e).__name__}: {e}"
+        emit_tool_error(
+            "read_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
 
 
 @tool("write_file", parse_docstring=True)
@@ -328,6 +510,7 @@ def write_file_tool(
     description: str,
     path: str,
     content: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     append: bool = False,
 ) -> str:
     """Write text content to a file.
@@ -337,6 +520,15 @@ def write_file_tool(
         path: The **absolute** path to the file to write to. ALWAYS PROVIDE THIS PARAMETER SECOND.
         content: The content to write to the file. ALWAYS PROVIDE THIS PARAMETER THIRD.
     """
+    started_at = time.perf_counter()
+    display_path = path
+    emit_tool_start(
+        "write_file",
+        tool_call_id=tool_call_id,
+        summary=description,
+        path=display_path,
+    )
+
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
@@ -344,17 +536,70 @@ def write_file_tool(
             thread_data = get_thread_data(runtime)
             path = replace_virtual_path(path, thread_data)
         sandbox.write_file(path, content, append)
+        emit_tool_result(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            preview="OK",
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
         return "OK"
     except SandboxError as e:
-        return f"Error: {e}"
+        error = f"Error: {e}"
+        emit_tool_error(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except PermissionError:
-        return f"Error: Permission denied writing to file: {path}"
+        error = f"Error: Permission denied writing to file: {display_path}"
+        emit_tool_error(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except IsADirectoryError:
-        return f"Error: Path is a directory, not a file: {path}"
+        error = f"Error: Path is a directory, not a file: {display_path}"
+        emit_tool_error(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except OSError as e:
-        return f"Error: Failed to write file '{path}': {e}"
+        error = f"Error: Failed to write file '{display_path}': {e}"
+        emit_tool_error(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except Exception as e:
-        return f"Error: Unexpected error writing file: {type(e).__name__}: {e}"
+        error = f"Error: Unexpected error writing file: {type(e).__name__}: {e}"
+        emit_tool_error(
+            "write_file",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
 
 
 @tool("str_replace", parse_docstring=True)
@@ -364,6 +609,7 @@ def str_replace_tool(
     path: str,
     old_str: str,
     new_str: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     replace_all: bool = False,
 ) -> str:
     """Replace a substring in a file with another substring.
@@ -376,6 +622,15 @@ def str_replace_tool(
         new_str: The new substring. ALWAYS PROVIDE THIS PARAMETER FOURTH.
         replace_all: Whether to replace all occurrences of the substring. If False, only the first occurrence will be replaced. Default is False.
     """
+    started_at = time.perf_counter()
+    display_path = path
+    emit_tool_start(
+        "str_replace",
+        tool_call_id=tool_call_id,
+        summary=description,
+        path=display_path,
+    )
+
     try:
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
@@ -384,20 +639,81 @@ def str_replace_tool(
             path = replace_virtual_path(path, thread_data)
         content = sandbox.read_file(path)
         if not content:
+            emit_tool_result(
+                "str_replace",
+                tool_call_id=tool_call_id,
+                summary=description,
+                preview="OK",
+                path=display_path,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return "OK"
         if old_str not in content:
-            return f"Error: String to replace not found in file: {path}"
+            error = f"Error: String to replace not found in file: {display_path}"
+            emit_tool_error(
+                "str_replace",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error=error,
+                path=display_path,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
+            return error
         if replace_all:
             content = content.replace(old_str, new_str)
         else:
             content = content.replace(old_str, new_str, 1)
         sandbox.write_file(path, content)
+        emit_tool_result(
+            "str_replace",
+            tool_call_id=tool_call_id,
+            summary=description,
+            preview="OK",
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
         return "OK"
     except SandboxError as e:
-        return f"Error: {e}"
+        error = f"Error: {e}"
+        emit_tool_error(
+            "str_replace",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except FileNotFoundError:
-        return f"Error: File not found: {path}"
+        error = f"Error: File not found: {display_path}"
+        emit_tool_error(
+            "str_replace",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except PermissionError:
-        return f"Error: Permission denied accessing file: {path}"
+        error = f"Error: Permission denied accessing file: {display_path}"
+        emit_tool_error(
+            "str_replace",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
     except Exception as e:
-        return f"Error: Unexpected error replacing string: {type(e).__name__}: {e}"
+        error = f"Error: Unexpected error replacing string: {type(e).__name__}: {e}"
+        emit_tool_error(
+            "str_replace",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            path=display_path,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error

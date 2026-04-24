@@ -1,5 +1,6 @@
 import { ExternalLinkIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from "react";
+import type { ExtraProps } from "streamdown";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,13 +10,23 @@ import {
 } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 
-export function CitationLink({ 
-  href, 
+type CitationLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> &
+  ExtraProps & {
+    href?: string;
+    children?: ReactNode;
+    className?: string;
+  };
+
+export function CitationLink({
+  href,
   children,
-  ...props 
-}: ComponentProps<"a">) {
+  className,
+  ...props
+}: CitationLinkProps) {
   const domain = extractDomain(href ?? "");
-  
+  const { node: _node, ...anchorProps } = props;
+  void _node;
+
   // Priority: children > domain
   const childrenText =
     typeof children === "string"
@@ -23,17 +34,21 @@ export function CitationLink({
       : null;
   const isGenericText = childrenText === "Source" || childrenText === "来源";
   const displayText = (!isGenericText && childrenText) ?? domain;
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.stopPropagation();
+    anchorProps.onClick?.(event);
+  };
 
   return (
     <HoverCard closeDelay={0} openDelay={0}>
       <HoverCardTrigger asChild>
         <a
+          {...anchorProps}
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center"
-          onClick={(e) => e.stopPropagation()}
-          {...props}
+          className={cn("inline-flex items-center", className)}
+          onClick={handleClick}
         >
           <Badge
             variant="secondary"
@@ -44,16 +59,16 @@ export function CitationLink({
           </Badge>
         </a>
       </HoverCardTrigger>
-      <HoverCardContent className={cn("relative w-80 p-0", props.className)}>
+      <HoverCardContent className={cn("relative w-80 p-0", className)}>
         <div className="p-3">
           <div className="space-y-1">
             {displayText && (
-              <h4 className="truncate font-medium text-sm leading-tight">
+              <h4 className="truncate text-sm leading-tight font-medium">
                 {displayText}
               </h4>
             )}
             {href && (
-              <p className="truncate break-all text-muted-foreground text-xs">
+              <p className="text-muted-foreground truncate text-xs break-all">
                 {href}
               </p>
             )}

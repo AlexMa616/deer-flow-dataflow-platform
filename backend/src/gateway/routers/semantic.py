@@ -5,8 +5,8 @@ import anyio
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from src.agents.middlewares.thread_data_middleware import THREAD_DATA_BASE_DIR
 from src.agents.memory.updater import get_memory_data
+from src.agents.middlewares.thread_data_middleware import THREAD_DATA_BASE_DIR
 from src.vector import VectorSearchResult, get_vector_index, index_memory
 
 router = APIRouter(prefix="/api", tags=["semantic"])

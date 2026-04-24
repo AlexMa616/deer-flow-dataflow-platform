@@ -49,3 +49,6 @@ web/
 
 # local runtime cache/log outputs
 .run/
+
+# Local thesis drafts and paper materials
+docs/paper/

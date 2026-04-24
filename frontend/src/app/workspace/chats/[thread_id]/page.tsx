@@ -2,13 +2,16 @@
 
 import type { Message } from "@langchain/langgraph-sdk";
 import type { UseStream } from "@langchain/langgraph-sdk/react";
-import { FilesIcon, XIcon } from "lucide-react";
+import { AlertTriangleIcon, FilesIcon, XIcon } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ConversationEmptyState } from "@/components/ai-elements/conversation";
 import { usePromptInputController } from "@/components/ai-elements/prompt-input";
 import { AlexMark } from "@/components/brand/alex-mark";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -21,20 +24,29 @@ import {
   ArtifactFileList,
   useArtifacts,
 } from "@/components/workspace/artifacts";
-import { InputBox } from "@/components/workspace/input-box";
+import { FullTranscriptSheet } from "@/components/workspace/full-transcript-sheet";
+import {
+  InputBox,
+  PromptSuggestionList,
+} from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
-import { SemanticSearchFloating } from "@/components/workspace/semantic";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Tooltip } from "@/components/workspace/tooltip";
 import { Welcome } from "@/components/workspace/welcome";
+import { getAPIClient } from "@/core/api";
 import { useI18n } from "@/core/i18n/hooks";
+import { parseUploadedFiles } from "@/core/messages/utils";
+import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useLocalSettings } from "@/core/settings";
+import { fetchSystemOverview, useSystemOverview } from "@/core/system";
 import { type AgentThread, type AgentThreadState } from "@/core/threads";
 import { useSubmitThread, useThreadStream } from "@/core/threads/hooks";
 import {
+  containsChineseText,
+  getThreadErrorDisplay,
   pathOfThread,
   textOfMessage,
   titleOfThread,
@@ -44,10 +56,25 @@ import { uuid } from "@/core/utils/uuid";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
+const SemanticSearchFloating = dynamic(
+  () =>
+    import("@/components/workspace/semantic/semantic-search-floating").then(
+      (module) => ({
+        default: module.SemanticSearchFloating,
+      }),
+    ),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+
 export default function ChatPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [settings, setSettings] = useLocalSettings();
+  const { models } = useModels();
+  const { data: systemOverview } = useSystemOverview();
   const { setOpen: setSidebarOpen } = useSidebar();
   const {
     artifacts,
@@ -59,18 +86,22 @@ export default function ChatPage() {
   } = useArtifacts();
   const { thread_id: threadIdFromPath } = useParams<{ thread_id: string }>();
   const searchParams = useSearchParams();
+  const isSkillMode = searchParams.get("mode") === "skill";
   const promptInputController = usePromptInputController();
   const inputInitialValue = useMemo(() => {
-    if (threadIdFromPath !== "new" || searchParams.get("mode") !== "skill") {
+    if (threadIdFromPath !== "new" || !isSkillMode) {
       return undefined;
     }
     return t.inputBox.createSkillPrompt;
-  }, [threadIdFromPath, searchParams, t.inputBox.createSkillPrompt]);
+  }, [threadIdFromPath, isSkillMode, t.inputBox.createSkillPrompt]);
   const lastInitialValueRef = useRef<string | undefined>(undefined);
   const setInputRef = useRef(promptInputController.textInput.setInput);
   setInputRef.current = promptInputController.textInput.setInput;
   useEffect(() => {
-    if (inputInitialValue && inputInitialValue !== lastInitialValueRef.current) {
+    if (
+      inputInitialValue &&
+      inputInitialValue !== lastInitialValueRef.current
+    ) {
       lastInitialValueRef.current = inputInitialValue;
       setTimeout(() => {
         setInputRef.current(inputInitialValue);
@@ -88,17 +119,55 @@ export default function ChatPage() {
     [threadIdFromPath],
   );
   const [threadId, setThreadId] = useState<string | null>(null);
+  const threadBootstrapRequestRef = useRef(0);
   useEffect(() => {
-    if (threadIdFromPath !== "new") {
-      setThreadId(threadIdFromPath);
-    } else {
-      setThreadId(uuid());
-    }
+    let cancelled = false;
+    const requestId = threadBootstrapRequestRef.current + 1;
+    threadBootstrapRequestRef.current = requestId;
+
+    const prepareThread = async () => {
+      setFinalState(null);
+      setStreamError(null);
+
+      if (threadIdFromPath === "new") {
+        setThreadId(uuid());
+        return;
+      }
+
+      setThreadId(null);
+      try {
+        await getAPIClient().threads.create({
+          threadId: threadIdFromPath,
+          ifExists: "do_nothing",
+        });
+
+        if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+          return;
+        }
+
+        setThreadId(threadIdFromPath);
+      } catch (error) {
+        if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+          return;
+        }
+
+        setThreadId(threadIdFromPath);
+        setStreamError(getThreadErrorDisplay(error));
+      }
+    };
+
+    void prepareThread();
+
+    return () => {
+      cancelled = true;
+    };
   }, [threadIdFromPath]);
-  useUploadStatusStream(threadId ?? "");
 
   const { showNotification } = useNotification();
   const [finalState, setFinalState] = useState<AgentThreadState | null>(null);
+  const [streamError, setStreamError] = useState<ReturnType<
+    typeof getThreadErrorDisplay
+  > | null>(null);
   const thread = useThreadStream({
     isNewThread,
     threadId,
@@ -122,10 +191,37 @@ export default function ChatPage() {
         });
       }
     },
+    onError: (error) => {
+      setStreamError(getThreadErrorDisplay(error));
+    },
   }) as unknown as UseStream<AgentThreadState>;
+  const selectedModel = useMemo(
+    () => models.find((model) => model.name === settings.context.model_name),
+    [models, settings.context.model_name],
+  );
+  const ultraUsesPlanMode = selectedModel?.ultra_uses_plan_mode ?? true;
+  const shouldWatchUploadStatus = useMemo(() => {
+    const messages = thread.values.messages ?? [];
+    return messages.some((message) => {
+      if (typeof message.content !== "string") {
+        return false;
+      }
+      return parseUploadedFiles(message.content).files.length > 0;
+    });
+  }, [thread.values.messages]);
+  useUploadStatusStream(threadId ?? "", undefined, {
+    enabled: shouldWatchUploadStatus,
+  });
   useEffect(() => {
-    if (thread.isLoading) setFinalState(null);
+    if (thread.isLoading) {
+      setFinalState(null);
+      setStreamError(null);
+    }
   }, [thread.isLoading]);
+
+  useEffect(() => {
+    setStreamError(null);
+  }, [threadId]);
 
   const title = useMemo(() => {
     let result = isNewThread
@@ -189,9 +285,15 @@ export default function ChatPage() {
     if (isNewThread) return true;
     const messages = (thread.values.messages ?? []) as Message[];
     const hasConversation = messages.some((message) => {
-      const role = (message as { type?: string; role?: string }).type
-        ?? (message as { type?: string; role?: string }).role;
-      if (role !== "human" && role !== "ai" && role !== "user" && role !== "assistant") {
+      const role =
+        (message as { type?: string; role?: string }).type ??
+        (message as { type?: string; role?: string }).role;
+      if (
+        role !== "human" &&
+        role !== "ai" &&
+        role !== "user" &&
+        role !== "assistant"
+      ) {
         return false;
       }
       const content = (message as { content?: unknown }).content;
@@ -219,6 +321,8 @@ export default function ChatPage() {
     });
     return !hasConversation;
   }, [isNewThread, thread.values.messages]);
+  const shouldShowSemanticSearch =
+    semanticReady && !isNewThread && !showWelcome;
 
   useEffect(() => {
     setSemanticReady(false);
@@ -234,13 +338,55 @@ export default function ChatPage() {
       ...settings.context,
       thinking_enabled: settings.context.mode !== "flash",
       is_plan_mode:
-        settings.context.mode === "pro" || settings.context.mode === "ultra",
+        settings.context.mode === "pro" ||
+        (settings.context.mode === "ultra" && ultraUsesPlanMode),
       subagent_enabled: settings.context.mode === "ultra",
+      max_concurrent_subagents:
+        settings.context.mode === "ultra" ? 1 : undefined,
     },
     afterSubmit() {
       router.push(pathOfThread(threadId!));
     },
   });
+  const guardedHandleSubmit = useCallback(
+    async (message: Parameters<typeof handleSubmit>[0]) => {
+      const requestGuardrails =
+        systemOverview?.request_guardrails ??
+        (await fetchSystemOverview()
+          .then((data) => data.request_guardrails)
+          .catch(() => null));
+      const selectedModelName =
+        typeof settings.context.model_name === "string"
+          ? settings.context.model_name
+          : null;
+      const blocksChineseContent = Boolean(
+        selectedModelName &&
+        requestGuardrails?.blocked_chinese_model_names.includes(
+          selectedModelName,
+        ),
+      );
+      const hasChineseContent =
+        containsChineseText(message.text) ||
+        Boolean(
+          message.files?.some((file) => containsChineseText(file.filename)),
+        );
+
+      if (blocksChineseContent && hasChineseContent) {
+        toast(
+          requestGuardrails?.message ??
+            "当前配置的上游模型接口对中文内容支持不稳定，本次将继续尝试发送；如果失败可稍后重试。",
+        );
+      }
+
+      setStreamError(null);
+      await handleSubmit(message);
+    },
+    [
+      handleSubmit,
+      settings.context.model_name,
+      systemOverview?.request_guardrails,
+    ],
+  );
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
@@ -251,7 +397,7 @@ export default function ChatPage() {
 
   return (
     <ThreadContext.Provider value={{ threadId, thread }}>
-      <ResizablePanelGroup orientation="horizontal">
+      <ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
         <ResizablePanel
           className="relative"
           defaultSize={artifactPanelOpen ? 46 : 100}
@@ -294,29 +440,57 @@ export default function ChatPage() {
                     )}
                   </div>
                   <div>
-                    {artifacts?.length > 0 && !artifactsOpen && (
-                      <Tooltip content="Show artifacts of this conversation">
-                        <Button
-                          className="text-muted-foreground hover:text-foreground"
-                          variant="ghost"
-                          onClick={() => {
-                            setArtifactsOpen(true);
-                            setSidebarOpen(false);
-                          }}
-                        >
-                          <FilesIcon />
-                          {t.common.artifacts}
-                        </Button>
+                    <div className="flex items-center gap-1">
+                      <Tooltip content="Open the archived raw transcript for this conversation">
+                        <FullTranscriptSheet threadId={threadId} />
                       </Tooltip>
-                    )}
+                      {artifacts?.length > 0 && !artifactsOpen && (
+                        <Tooltip content="Show artifacts of this conversation">
+                          <Button
+                            className="text-muted-foreground hover:text-foreground"
+                            variant="ghost"
+                            onClick={() => {
+                              setArtifactsOpen(true);
+                              setSidebarOpen(false);
+                            }}
+                          >
+                            <FilesIcon />
+                            {t.common.artifacts}
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
             </header>
-            <main className="flex min-h-0 max-w-full grow flex-col">
-              <div className="flex size-full justify-center">
+            <main className="flex min-h-0 max-w-full grow flex-col overflow-hidden">
+              {streamError && (
+                <div className="pointer-events-none absolute inset-x-0 top-12 z-20 flex justify-center px-4 pt-3 md:px-6">
+                  <Alert
+                    variant="destructive"
+                    className="pointer-events-auto relative w-full max-w-(--container-width-lg) border-rose-200/80 bg-rose-50/96 pr-12 shadow-[0_18px_40px_rgba(190,24,93,0.08)] backdrop-blur"
+                  >
+                    <AlertTriangleIcon className="size-4" />
+                    <AlertTitle>{streamError.title}</AlertTitle>
+                    <AlertDescription>{streamError.message}</AlertDescription>
+                    <Button
+                      className="absolute top-2 right-2 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setStreamError(null)}
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </Alert>
+                </div>
+              )}
+              <div className="flex min-h-0 flex-1 justify-center">
                 <MessageList
-                  className={cn("size-full", !isNewThread && "pt-10")}
+                  className={cn(
+                    streamError ? "pt-28" : !isNewThread && "pt-10",
+                  )}
                   threadId={threadId}
                   thread={thread}
                   messagesOverride={
@@ -327,15 +501,23 @@ export default function ChatPage() {
                   paddingBottom={todoListCollapsed ? 160 : 280}
                 />
               </div>
-              {semanticReady && <SemanticSearchFloating threadId={threadId} />}
-              <div className="absolute right-0 bottom-0 left-0 z-30 flex justify-center px-4">
+              {shouldShowSemanticSearch && (
+                <SemanticSearchFloating threadId={threadId} />
+              )}
+              <div
+                className={cn(
+                  "absolute inset-x-0 z-30 flex justify-center px-3 md:px-4",
+                  isNewThread
+                    ? "top-[46%] bottom-auto -translate-y-1/2"
+                    : "bottom-0",
+                )}
+              >
                 <div
                   className={cn(
                     "relative w-full",
-                    isNewThread && "-translate-y-[calc(50vh-96px)]",
                     isNewThread
-                      ? "max-w-(--container-width-sm)"
-                      : "max-w-(--container-width-md)",
+                      ? "max-w-(--container-width-md)"
+                      : "max-w-(--container-width-lg)",
                   )}
                 >
                   <div className="absolute -top-4 right-0 left-0 z-0">
@@ -362,9 +544,11 @@ export default function ChatPage() {
                     )}
                     <InputBox
                       className={cn(
-                        "w-full -translate-y-4 border border-slate-200/85 bg-white/92 text-slate-900 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl",
+                        "w-full border border-slate-200/85 bg-white/92 text-slate-900 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl",
+                        !isNewThread && "-translate-y-4",
                       )}
                       isNewThread={showWelcome}
+                      showInlineSuggestions={false}
                       autoFocus={false}
                       status={thread.isLoading ? "streaming" : "ready"}
                       context={settings.context}
@@ -372,9 +556,14 @@ export default function ChatPage() {
                       onContextChange={(context) =>
                         setSettings("context", context)
                       }
-                      onSubmit={handleSubmit}
+                      onSubmit={guardedHandleSubmit}
                       onStop={handleStop}
                     />
+                    {showWelcome && !isSkillMode && (
+                      <div className="mt-4 px-1">
+                        <PromptSuggestionList className="mx-auto max-w-(--container-width-md)" />
+                      </div>
+                    )}
                   </div>
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
                     <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-xs">

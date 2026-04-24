@@ -42,6 +42,7 @@ export function CodeEditor({
   disabled,
   autoFocus,
   settings,
+  themeMode = "system",
 }: {
   className?: string;
   placeholder?: string;
@@ -50,6 +51,7 @@ export function CodeEditor({
   disabled?: boolean;
   autoFocus?: boolean;
   settings?: unknown;
+  themeMode?: "system" | "light" | "dark";
 }) {
   const {
     thread: { isLoading },
@@ -95,7 +97,12 @@ export function CodeEditor({
             "h-full overflow-auto font-mono [&_.cm-editor]:h-full [&_.cm-focused]:outline-none!",
             "px-2 py-0! [&_.cm-line]:px-2! [&_.cm-line]:py-0!",
           )}
-          theme={resolvedTheme === "dark" ? customDarkTheme : customLightTheme}
+          theme={
+            themeMode === "dark" ||
+            (themeMode === "system" && resolvedTheme === "dark")
+              ? customDarkTheme
+              : customLightTheme
+          }
           extensions={extensions}
           basicSetup={{
             foldGutter:

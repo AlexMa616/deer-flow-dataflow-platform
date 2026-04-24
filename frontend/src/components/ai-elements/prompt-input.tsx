@@ -827,6 +827,7 @@ export const PromptInputTextarea = ({
   placeholder = "What would you like to know?",
   ...props
 }: PromptInputTextareaProps) => {
+  const { onKeyDown, onPaste, ...restProps } = props;
   const controller = useOptionalPromptInputController();
   const attachments = usePromptInputAttachments();
   const [isComposing, setIsComposing] = useState(false);
@@ -865,6 +866,8 @@ export const PromptInputTextarea = ({
         attachments.remove(lastAttachment.id);
       }
     }
+
+    onKeyDown?.(e);
   };
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
@@ -889,6 +892,8 @@ export const PromptInputTextarea = ({
       event.preventDefault();
       attachments.add(files);
     }
+
+    onPaste?.(event);
   };
 
   const controlledProps = controller
@@ -912,7 +917,7 @@ export const PromptInputTextarea = ({
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       placeholder={placeholder}
-      {...props}
+      {...restProps}
       {...controlledProps}
     />
   );

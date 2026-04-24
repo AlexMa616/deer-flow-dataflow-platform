@@ -10,6 +10,7 @@ from langgraph.typing import ContextT
 
 from src.agents.thread_state import ThreadState
 from src.sandbox.tools import get_thread_data, replace_virtual_path
+from src.tools.events import emit_tool_error, emit_tool_result, emit_tool_start
 
 
 @tool("view_image", parse_docstring=True)
@@ -32,6 +33,13 @@ def view_image_tool(
     Args:
         image_path: Absolute path to the image file. Common formats supported: jpg, jpeg, png, webp.
     """
+    emit_tool_start(
+        "view_image",
+        tool_call_id=tool_call_id,
+        summary="Read image",
+        path=image_path,
+    )
+
     # Replace virtual path with actual path
     # /mnt/user-data/* paths are mapped to thread-specific directories
     thread_data = get_thread_data(runtime)
@@ -40,27 +48,59 @@ def view_image_tool(
     # Validate that the path is absolute
     path = Path(actual_path)
     if not path.is_absolute():
+        error = f"Error: Path must be absolute, got: {image_path}"
+        emit_tool_error(
+            "view_image",
+            tool_call_id=tool_call_id,
+            summary="Read image",
+            error=error,
+            path=image_path,
+        )
         return Command(
-            update={"messages": [ToolMessage(f"Error: Path must be absolute, got: {image_path}", tool_call_id=tool_call_id)]},
+            update={"messages": [ToolMessage(error, tool_call_id=tool_call_id)]},
         )
 
     # Validate that the file exists
     if not path.exists():
+        error = f"Error: Image file not found: {image_path}"
+        emit_tool_error(
+            "view_image",
+            tool_call_id=tool_call_id,
+            summary="Read image",
+            error=error,
+            path=image_path,
+        )
         return Command(
-            update={"messages": [ToolMessage(f"Error: Image file not found: {image_path}", tool_call_id=tool_call_id)]},
+            update={"messages": [ToolMessage(error, tool_call_id=tool_call_id)]},
         )
 
     # Validate that it's a file (not a directory)
     if not path.is_file():
+        error = f"Error: Path is not a file: {image_path}"
+        emit_tool_error(
+            "view_image",
+            tool_call_id=tool_call_id,
+            summary="Read image",
+            error=error,
+            path=image_path,
+        )
         return Command(
-            update={"messages": [ToolMessage(f"Error: Path is not a file: {image_path}", tool_call_id=tool_call_id)]},
+            update={"messages": [ToolMessage(error, tool_call_id=tool_call_id)]},
         )
 
     # Validate image extension
     valid_extensions = {".jpg", ".jpeg", ".png", ".webp"}
     if path.suffix.lower() not in valid_extensions:
+        error = f"Error: Unsupported image format: {path.suffix}. Supported formats: {', '.join(valid_extensions)}"
+        emit_tool_error(
+            "view_image",
+            tool_call_id=tool_call_id,
+            summary="Read image",
+            error=error,
+            path=image_path,
+        )
         return Command(
-            update={"messages": [ToolMessage(f"Error: Unsupported image format: {path.suffix}. Supported formats: {', '.join(valid_extensions)}", tool_call_id=tool_call_id)]},
+            update={"messages": [ToolMessage(error, tool_call_id=tool_call_id)]},
         )
 
     # Detect MIME type from file extension
@@ -81,13 +121,28 @@ def view_image_tool(
             image_data = f.read()
             image_base64 = base64.b64encode(image_data).decode("utf-8")
     except Exception as e:
+        error = f"Error reading image file: {str(e)}"
+        emit_tool_error(
+            "view_image",
+            tool_call_id=tool_call_id,
+            summary="Read image",
+            error=error,
+            path=image_path,
+        )
         return Command(
-            update={"messages": [ToolMessage(f"Error reading image file: {str(e)}", tool_call_id=tool_call_id)]},
+            update={"messages": [ToolMessage(error, tool_call_id=tool_call_id)]},
         )
 
     # Update viewed_images in state
     # The merge_viewed_images reducer will handle merging with existing images
     new_viewed_images = {image_path: {"base64": image_base64, "mime_type": mime_type}}
+    emit_tool_result(
+        "view_image",
+        tool_call_id=tool_call_id,
+        summary="Read image",
+        preview=f"{path.name} · {mime_type}",
+        path=image_path,
+    )
 
     return Command(
         update={"viewed_images": new_viewed_images, "messages": [ToolMessage("Successfully read image", tool_call_id=tool_call_id)]},

@@ -9,6 +9,7 @@ import {
   Settings2Icon,
   SettingsIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
 import {
@@ -28,7 +29,17 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 
 import { GithubIcon } from "./github-icon";
-import { SettingsDialog } from "./settings";
+
+const SettingsDialog = dynamic(
+  () =>
+    import("./settings").then((module) => ({
+      default: module.SettingsDialog,
+    })),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 function NavMenuButtonContent({
   isSidebarOpen,

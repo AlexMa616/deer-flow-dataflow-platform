@@ -24,7 +24,7 @@ function SkeletonBar({
 export function MessageListSkeleton() {
   let index = 0;
   return (
-    <div className="flex w-full max-w-(--container-width-md) flex-col gap-12 p-8 pt-16">
+    <div className="flex w-full max-w-(--container-width-lg) flex-col gap-10 px-6 pt-10 pb-6">
       <div
         role="human-message"
         className="flex w-[50%] flex-col items-end gap-2 self-end"

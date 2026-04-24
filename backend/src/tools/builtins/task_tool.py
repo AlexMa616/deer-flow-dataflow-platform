@@ -12,10 +12,34 @@ from langgraph.typing import ContextT
 
 from src.agents.lead_agent.prompt import get_skills_prompt_section
 from src.agents.thread_state import ThreadState
+from src.config import get_app_config
 from src.subagents import SubagentExecutor, get_subagent_config
 from src.subagents.executor import SubagentStatus, get_background_task_result
+from src.tools.events import emit_tool_error, emit_tool_result, emit_tool_start
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_subagent_model_name(
+    parent_model: str | None,
+    subagent_type: Literal["general-purpose", "bash"],
+) -> str | None:
+    """Resolve the model name to use for a delegated subagent.
+
+    Allows parent models to route execution-heavy delegated work to a different
+    model while preserving the parent model for planning/writing.
+    """
+    if parent_model is None:
+        return None
+
+    parent_config = get_app_config().get_model_config(parent_model)
+    if parent_config is None:
+        return parent_model
+
+    if subagent_type == "bash":
+        return parent_config.preferred_bash_subagent_model or parent_config.preferred_subagent_model or parent_model
+
+    return parent_config.preferred_subagent_model or parent_model
 
 
 @tool("task", parse_docstring=True)
@@ -57,10 +81,25 @@ def task_tool(
         subagent_type: The type of subagent to use. ALWAYS PROVIDE THIS PARAMETER THIRD.
         max_turns: Optional maximum number of agent turns. Defaults to subagent's configured max.
     """
+    started_at = time.perf_counter()
+    emit_tool_start(
+        "task",
+        tool_call_id=tool_call_id,
+        summary=description,
+    )
+
     # Get subagent configuration
     config = get_subagent_config(subagent_type)
     if config is None:
-        return f"Error: Unknown subagent type '{subagent_type}'. Available: general-purpose, bash"
+        error = f"Error: Unknown subagent type '{subagent_type}'. Available: general-purpose, bash"
+        emit_tool_error(
+            "task",
+            tool_call_id=tool_call_id,
+            summary=description,
+            error=error,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return error
 
     # Build config overrides
     overrides: dict = {}
@@ -98,8 +137,22 @@ def task_tool(
     # Lazy import to avoid circular dependency
     from src.tools import get_available_tools
 
+    subagent_model_name = _resolve_subagent_model_name(parent_model, subagent_type)
+    if subagent_model_name and subagent_model_name != parent_model:
+        logger.info(
+            "[trace=%s] Routing %s subagent from parent model '%s' to '%s'",
+            trace_id,
+            subagent_type,
+            parent_model,
+            subagent_model_name,
+        )
+        config = replace(config, model=subagent_model_name)
+
     # Subagents should not have subagent tools enabled (prevent recursive nesting)
-    tools = get_available_tools(model_name=parent_model, subagent_enabled=False)
+    tools = get_available_tools(
+        model_name=subagent_model_name or parent_model,
+        subagent_enabled=False,
+    )
 
     # Create executor
     executor = SubagentExecutor(
@@ -132,7 +185,15 @@ def task_tool(
         if result is None:
             logger.error(f"[trace={trace_id}] Task {task_id} not found in background tasks")
             writer({"type": "task_failed", "task_id": task_id, "error": "Task disappeared from background tasks"})
-            return f"Error: Task {task_id} disappeared from background tasks"
+            error = f"Error: Task {task_id} disappeared from background tasks"
+            emit_tool_error(
+                "task",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error=error,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
+            return error
 
         # Log status changes for debugging
         if result.status != last_status:
@@ -161,14 +222,35 @@ def task_tool(
         if result.status == SubagentStatus.COMPLETED:
             writer({"type": "task_completed", "task_id": task_id, "result": result.result})
             logger.info(f"[trace={trace_id}] Task {task_id} completed after {poll_count} polls")
+            emit_tool_result(
+                "task",
+                tool_call_id=tool_call_id,
+                summary=description,
+                preview=result.result,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return f"Task Succeeded. Result: {result.result}"
         elif result.status == SubagentStatus.FAILED:
             writer({"type": "task_failed", "task_id": task_id, "error": result.error})
             logger.error(f"[trace={trace_id}] Task {task_id} failed: {result.error}")
+            emit_tool_error(
+                "task",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error=result.error,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return f"Task failed. Error: {result.error}"
         elif result.status == SubagentStatus.TIMED_OUT:
             writer({"type": "task_timed_out", "task_id": task_id, "error": result.error})
             logger.warning(f"[trace={trace_id}] Task {task_id} timed out: {result.error}")
+            emit_tool_error(
+                "task",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error=result.error,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return f"Task timed out. Error: {result.error}"
 
         # Still running, wait before next poll
@@ -181,4 +263,11 @@ def task_tool(
         if poll_count > 192:  # 192 * 5s = 16 minutes
             logger.error(f"[trace={trace_id}] Task {task_id} polling timed out after {poll_count} polls (should have been caught by thread pool timeout)")
             writer({"type": "task_timed_out", "task_id": task_id})
+            emit_tool_error(
+                "task",
+                tool_call_id=tool_call_id,
+                summary=description,
+                error="Task polling timed out after 16 minutes",
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+            )
             return f"Task polling timed out after 16 minutes. This may indicate the background task is stuck. Status: {result.status.value}"

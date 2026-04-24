@@ -11,6 +11,34 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from src.agents.middlewares.thread_data_middleware import THREAD_DATA_BASE_DIR
+from src.config import get_app_config
+from src.models.relay_http import relay_requires_sdk_header_strip
+
+_INLINE_PREVIEW_EXTENSIONS = {
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".csv",
+    ".html",
+    ".css",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".py",
+    ".java",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".go",
+    ".rs",
+    ".sql",
+    ".xml",
+}
+_MAX_INLINE_FILE_CHARS = 6000
+_MAX_INLINE_TOTAL_CHARS = 16000
 
 
 class UploadsMiddlewareState(AgentState):
@@ -110,6 +138,63 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
 
         return "\n".join(lines)
 
+    def _should_inline_upload_preview(self, runtime: Runtime) -> bool:
+        model_name = runtime.context.get("model_name")
+        app_config = get_app_config()
+        if model_name is None and app_config.models:
+            model_name = app_config.models[0].name
+
+        model_config = app_config.get_model_config(model_name) if model_name else None
+        base_url = model_config.model_extra.get("base_url") if model_config else None
+        return relay_requires_sdk_header_strip(str(base_url) if base_url else None)
+
+    def _read_preview_text(self, file_path: Path) -> str:
+        preferred_path = file_path
+        if file_path.suffix.lower() not in _INLINE_PREVIEW_EXTENSIONS:
+            markdown_variant = file_path.with_suffix(".md")
+            if markdown_variant.exists():
+                preferred_path = markdown_variant
+            else:
+                return ""
+
+        try:
+            content = preferred_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return ""
+
+        return content[:_MAX_INLINE_FILE_CHARS].strip()
+
+    def _create_inline_preview_message(self, thread_id: str, files: list[dict]) -> str:
+        uploads_dir = self._get_uploads_dir(thread_id)
+        sections = ["<uploaded_file_previews>", "Relay compatibility mode has inlined file previews below:", ""]
+        total_chars = 0
+
+        for file in files:
+            if total_chars >= _MAX_INLINE_TOTAL_CHARS:
+                break
+
+            file_path = uploads_dir / file["filename"]
+            preview = self._read_preview_text(file_path)
+            if not preview:
+                continue
+
+            remaining = _MAX_INLINE_TOTAL_CHARS - total_chars
+            clipped_preview = preview[:remaining].strip()
+            if not clipped_preview:
+                continue
+
+            sections.append(f"<file name=\"{file['filename']}\">")
+            sections.append(clipped_preview)
+            sections.append("</file>")
+            sections.append("")
+            total_chars += len(clipped_preview)
+
+        if total_chars == 0:
+            return ""
+
+        sections.append("</uploaded_file_previews>")
+        return "\n".join(sections)
+
     def _extract_files_from_message(self, content: str) -> set[str]:
         """Extract filenames from uploaded_files tag in message content.
 
@@ -192,6 +277,9 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
 
         # Create files message and prepend to the last human message content
         files_message = self._create_files_message(files)
+        preview_message = ""
+        if self._should_inline_upload_preview(runtime):
+            preview_message = self._create_inline_preview_message(thread_id, files)
 
         # Extract original content - handle both string and list formats
         original_content = ""
@@ -208,8 +296,12 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         logger.info(f"Original message content: {original_content[:100] if original_content else '(empty)'}")
 
         # Create new message with combined content
+        combined_parts = [files_message]
+        if preview_message:
+            combined_parts.append(preview_message)
+        combined_parts.append(original_content)
         updated_message = HumanMessage(
-            content=f"{files_message}\n\n{original_content}",
+            content="\n\n".join(part for part in combined_parts if part),
             id=last_message.id,
             additional_kwargs=last_message.additional_kwargs,
         )

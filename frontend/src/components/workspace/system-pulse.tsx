@@ -104,7 +104,10 @@ export function SystemPulse({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="ambilight enabled absolute inset-0 opacity-25" aria-hidden="true" />
+      <div
+        className="ambilight enabled pointer-events-none absolute inset-0 opacity-25"
+        aria-hidden="true"
+      />
       <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-cyan-300/35 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 -left-10 h-32 w-32 rounded-full bg-indigo-300/25 blur-3xl" />
       <div className="relative z-10 space-y-3">

@@ -3,16 +3,18 @@ from langchain.agents.middleware import SummarizationMiddleware, TodoListMiddlew
 from langchain_core.runnables import RunnableConfig
 
 from src.agents.lead_agent.prompt import apply_prompt_template
+from src.agents.middlewares.checkpoint_middleware import CheckpointMiddleware
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
+from src.agents.middlewares.lineage_middleware import DataLineageMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
 from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
+from src.agents.middlewares.transcript_archive_middleware import TranscriptArchiveMiddleware
 from src.agents.middlewares.uploads_middleware import UploadsMiddleware
+from src.agents.middlewares.upstream_safe_payload_middleware import UpstreamSafePayloadMiddleware
 from src.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from src.agents.middlewares.checkpoint_middleware import CheckpointMiddleware
-from src.agents.middlewares.lineage_middleware import DataLineageMiddleware
 from src.agents.thread_state import ThreadState
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
@@ -37,13 +39,9 @@ def _create_summarization_middleware() -> SummarizationMiddleware | None:
     # Prepare keep parameter
     keep = config.keep.to_tuple()
 
-    # Prepare model parameter
-    if config.model_name:
-        model = config.model_name
-    else:
-        # Use a lightweight model for summarization to save costs
-        # Falls back to default model if not explicitly specified
-        model = create_chat_model(thinking_enabled=False)
+    # Always build an explicit lightweight chat model so summarization
+    # doesn't silently fall back to the primary run model.
+    model = create_chat_model(name=config.model_name, thinking_enabled=False)
 
     # Prepare kwargs
     kwargs = {
@@ -194,7 +192,14 @@ def _build_middlewares(config: RunnableConfig):
     Returns:
         List of middleware instances.
     """
-    middlewares = [ThreadDataMiddleware(), UploadsMiddleware(), SandboxMiddleware(), DanglingToolCallMiddleware()]
+    middlewares = [
+        ThreadDataMiddleware(),
+        UploadsMiddleware(),
+        SandboxMiddleware(),
+        DanglingToolCallMiddleware(),
+        TranscriptArchiveMiddleware(),
+        UpstreamSafePayloadMiddleware(),
+    ]
 
     # Add summarization middleware if enabled
     summarization_middleware = _create_summarization_middleware()
@@ -242,14 +247,41 @@ def _build_middlewares(config: RunnableConfig):
 
 def make_lead_agent(config: RunnableConfig):
     # Lazy import to avoid circular dependency
+    from src.config import get_app_config
     from src.tools import get_available_tools
 
-    thinking_enabled = config.get("configurable", {}).get("thinking_enabled", True)
-    model_name = config.get("configurable", {}).get("model_name") or config.get("configurable", {}).get("model")
-    is_plan_mode = config.get("configurable", {}).get("is_plan_mode", False)
-    subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
-    max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
-    print(f"thinking_enabled: {thinking_enabled}, model_name: {model_name}, is_plan_mode: {is_plan_mode}, subagent_enabled: {subagent_enabled}, max_concurrent_subagents: {max_concurrent_subagents}")
+    configurable = dict(config.get("configurable", {}))
+    thinking_enabled = configurable.get("thinking_enabled", True)
+    model_name = configurable.get("model_name") or configurable.get("model")
+    is_plan_mode = configurable.get("is_plan_mode", False)
+    subagent_enabled = configurable.get("subagent_enabled", False)
+    max_concurrent_subagents = configurable.get("max_concurrent_subagents", 3)
+
+    app_config = get_app_config()
+    if model_name is None and app_config.models:
+        model_name = app_config.models[0].name
+
+    model_config = app_config.get_model_config(model_name) if model_name else None
+    effective_is_plan_mode = is_plan_mode
+    if (
+        subagent_enabled
+        and model_config is not None
+        and not model_config.ultra_uses_plan_mode
+    ):
+        effective_is_plan_mode = False
+
+    configurable["is_plan_mode"] = effective_is_plan_mode
+    if model_name is not None:
+        configurable["model_name"] = model_name
+    config["configurable"] = configurable
+
+    print(
+        "thinking_enabled: "
+        f"{thinking_enabled}, model_name: {model_name}, "
+        f"is_plan_mode: {effective_is_plan_mode}, "
+        f"subagent_enabled: {subagent_enabled}, "
+        f"max_concurrent_subagents: {max_concurrent_subagents}"
+    )
     
     # Inject run metadata for LangSmith trace tagging
     if "metadata" not in config:
@@ -257,7 +289,7 @@ def make_lead_agent(config: RunnableConfig):
     config["metadata"].update({
         "model_name": model_name or "default",
         "thinking_enabled": thinking_enabled,
-        "is_plan_mode": is_plan_mode,
+        "is_plan_mode": effective_is_plan_mode,
         "subagent_enabled": subagent_enabled,
     })
     

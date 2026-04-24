@@ -1,5 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import type { UseStream } from "@langchain/langgraph-sdk/react";
+import { useMemo } from "react";
 
 import {
   Conversation,
@@ -19,6 +20,7 @@ import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import type { Subtask } from "@/core/tasks";
 import { useUpdateSubtask } from "@/core/tasks/context";
 import type { AgentThreadState } from "@/core/threads";
+import { buildVisibleMessagesFromHistory } from "@/core/threads/utils";
 import { cn } from "@/lib/utils";
 
 import { ArtifactFileList } from "../artifacts/artifact-file-list";
@@ -47,15 +49,25 @@ export function MessageList({
   const { t } = useI18n();
   const rehypePlugins = useRehypeSplitWordsIntoSpans(thread.isLoading);
   const updateSubtask = useUpdateSubtask();
-  const messages = messagesOverride ?? thread.messages;
+  const history = (() => {
+    try {
+      return thread.history;
+    } catch {
+      return [];
+    }
+  })();
+  const messages = useMemo(
+    () => buildVisibleMessagesFromHistory(history, messagesOverride ?? thread.messages),
+    [history, messagesOverride, thread.messages],
+  );
   if (thread.isThreadLoading) {
     return <MessageListSkeleton />;
   }
   return (
     <Conversation
-      className={cn("flex size-full flex-col justify-center", className)}
+      className={cn("flex min-h-0 flex-1 flex-col justify-center", className)}
     >
-      <ConversationContent className="mx-auto w-full max-w-(--container-width-md) gap-6 px-1 pt-10 md:pt-12">
+      <ConversationContent className="mx-auto w-full max-w-(--container-width-lg) gap-5 px-3 pt-6 md:px-4 md:pt-8">
         {groupMessages(messages, (group) => {
           if (group.type === "human" || group.type === "assistant") {
             return (
@@ -69,11 +81,10 @@ export function MessageList({
             const message = group.messages[0];
             if (message && hasContent(message)) {
               return (
-                <MarkdownContent
+                <MessageListItem
                   key={group.id}
-                  content={extractContentFromMessage(message)}
+                  message={message}
                   isLoading={thread.isLoading}
-                  rehypePlugins={rehypePlugins}
                 />
               );
             }

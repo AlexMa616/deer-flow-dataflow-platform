@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "xterm/css/xterm.css";
 
 @source "../node_modules/streamdown/dist/index.js";
 
@@ -250,8 +251,8 @@
   --accent: oklch(0.955 0.012 255);
   --accent-foreground: oklch(0.22 0.02 260);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.90 0.01 260);
-  --input: oklch(0.90 0.01 260);
+  --border: oklch(0.9 0.01 260);
+  --input: oklch(0.9 0.01 260);
   --ring: transparent;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -393,11 +394,438 @@
     -webkit-text-fill-color: transparent;
     text-fill-color: transparent;
   }
+
+  .vibe-terminal .xterm {
+    height: 100%;
+    padding: 0.85rem 1rem;
+  }
+
+  .vibe-terminal .xterm-viewport {
+    background-color: #f7f9fc;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .vibe-terminal .xterm-viewport::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .vibe-terminal .xterm-viewport::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+    background-color: #cbd5e1;
+  }
+
+  .vibe-terminal .xterm-viewport::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .vibe-terminal .xterm-screen {
+    width: 100%;
+    height: 100%;
+  }
 }
 
 :root {
-  --container-width-xs: calc(var(--spacing) * 72);
-  --container-width-sm: calc(var(--spacing) * 144);
-  --container-width-md: calc(var(--spacing) * 204);
-  --container-width-lg: calc(var(--spacing) * 256);
+  --container-width-xs: calc(var(--spacing) * 84);
+  --container-width-sm: calc(var(--spacing) * 168);
+  --container-width-md: calc(var(--spacing) * 252);
+  --container-width-lg: calc(var(--spacing) * 320);
+}
+
+@layer components {
+  .login-agent-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(37, 99, 235, 0.2),
+      rgba(56, 189, 248, 0.08) 18rem,
+      transparent 34rem
+    );
+    opacity: 0.9;
+    transition: opacity 200ms ease;
+  }
+
+  .login-agent-stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(37, 99, 235, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
+    background-size: 38px 38px;
+    mask-image: radial-gradient(circle at 50% 45%, black, transparent 72%);
+  }
+
+  .login-agent-pointer {
+    pointer-events: none;
+    background: radial-gradient(
+      circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(255, 255, 255, 0.9),
+      rgba(255, 255, 255, 0.25) 16rem,
+      transparent 30rem
+    );
+    mix-blend-mode: soft-light;
+  }
+
+  .login-agent-canvas {
+    perspective: 1200px;
+  }
+
+  .login-brand-pill,
+  .login-auth-panel,
+  .login-agent-status,
+  .login-mode-switch {
+    transition:
+      transform 220ms ease,
+      border-color 220ms ease,
+      background-color 220ms ease,
+      box-shadow 220ms ease;
+  }
+
+  .login-brand-mark {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    isolation: isolate;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 1rem;
+    background:
+      radial-gradient(
+        circle at 30% 26%,
+        rgba(255, 255, 255, 0.92),
+        transparent 24%
+      ),
+      conic-gradient(from 210deg, #101828, #2563eb, #38bdf8, #99f6e4, #101828);
+    box-shadow:
+      0 16px 34px rgba(37, 99, 235, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    transition:
+      transform 260ms ease,
+      box-shadow 260ms ease,
+      filter 260ms ease;
+  }
+
+  .login-brand-mark::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.44);
+    border-radius: 0.7rem;
+    background: rgba(16, 24, 40, 0.18);
+  }
+
+  .login-brand-core {
+    position: relative;
+    z-index: 1;
+    width: 30%;
+    height: 30%;
+    border-radius: 9999px;
+    background: #ffffff;
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.16);
+  }
+
+  .login-brand-node {
+    position: absolute;
+    z-index: 1;
+    width: 14%;
+    height: 14%;
+    border-radius: 9999px;
+    background: #ffffff;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.74);
+  }
+
+  .login-brand-node-a {
+    top: 20%;
+    right: 24%;
+  }
+
+  .login-brand-node-b {
+    right: 22%;
+    bottom: 22%;
+    background: #bfdbfe;
+  }
+
+  .login-brand-node-c {
+    bottom: 24%;
+    left: 22%;
+    background: #99f6e4;
+  }
+
+  .login-brand-pill:hover,
+  .login-auth-panel:hover,
+  .login-agent-status:hover,
+  .login-mode-switch:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 24px 70px rgba(37, 99, 235, 0.12);
+  }
+
+  .login-brand-pill:hover .login-brand-mark {
+    transform: rotate(-8deg) scale(1.06);
+    filter: saturate(1.12);
+    box-shadow:
+      0 20px 44px rgba(37, 99, 235, 0.26),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .login-agent-glass {
+    transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transform-style: preserve-3d;
+    transition: transform 160ms ease-out;
+  }
+
+  .login-agent-orb {
+    transform-style: preserve-3d;
+    animation: login-agent-float 7.5s ease-in-out infinite;
+  }
+
+  .login-agent-ring {
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    background:
+      conic-gradient(
+        from 220deg,
+        rgba(37, 99, 235, 0),
+        rgba(37, 99, 235, 0.62),
+        rgba(56, 189, 248, 0.28),
+        rgba(153, 246, 228, 0),
+        rgba(37, 99, 235, 0)
+      ),
+      radial-gradient(circle, rgba(255, 255, 255, 0.7), transparent 68%);
+    filter: drop-shadow(0 18px 40px rgba(37, 99, 235, 0.14));
+    mask-image: radial-gradient(circle, transparent 58%, black 59%);
+    animation: login-agent-orbit 18s linear infinite;
+  }
+
+  .login-agent-node,
+  .login-agent-chat,
+  .login-agent-step {
+    animation: login-agent-rise 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .login-agent-node {
+    animation:
+      login-agent-rise 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both,
+      login-agent-breathe 3.8s ease-in-out infinite;
+  }
+
+  .login-agent-core {
+    transform: translateZ(46px);
+  }
+
+  .login-agent-chat-a {
+    transform: translateZ(64px) rotate(-4deg);
+  }
+
+  .login-agent-chat-b {
+    transform: translateZ(78px) rotate(4deg);
+  }
+
+  .login-agent-glass:hover {
+    box-shadow: 0 38px 96px rgba(37, 99, 235, 0.18);
+  }
+
+  .login-agent-node:hover {
+    color: #1d4ed8;
+    transform: translateY(-4px) scale(1.04);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 20px 44px rgba(37, 99, 235, 0.16);
+  }
+
+  .login-agent-chat:hover,
+  .login-agent-step:hover {
+    transform: translateY(-5px) scale(1.015);
+    box-shadow: 0 26px 58px rgba(37, 99, 235, 0.16);
+  }
+
+  .login-agent-chat-a:hover {
+    transform: translateZ(64px) rotate(-2deg) translateY(-5px) scale(1.015);
+  }
+
+  .login-agent-chat-b:hover {
+    transform: translateZ(78px) rotate(2deg) translateY(-5px) scale(1.015);
+  }
+
+  .login-agent-shell.is-typing .login-agent-core {
+    box-shadow:
+      0 32px 82px rgba(37, 99, 235, 0.3),
+      0 0 0 1px rgba(147, 197, 253, 0.32);
+  }
+
+  .login-agent-shell.is-typing .login-agent-status {
+    border-color: rgba(37, 99, 235, 0.32);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 22px 58px rgba(37, 99, 235, 0.14);
+  }
+
+  .login-agent-shell.is-typing .login-agent-chat-a {
+    border-color: rgba(37, 99, 235, 0.28);
+  }
+
+  .login-agent-typed-line {
+    transform-origin: left;
+    animation: login-agent-type-line 2.6s ease-in-out infinite;
+  }
+
+  .login-agent-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: rgba(153, 246, 228, 0.96);
+    animation: login-agent-dot 1.1s ease-in-out infinite;
+  }
+
+  .login-agent-caret {
+    width: 1px;
+    height: 1.05rem;
+    border-radius: 9999px;
+    background: #2563eb;
+    animation: login-agent-caret 1s steps(2, jump-none) infinite;
+  }
+
+  .login-agent-wave {
+    transform-origin: bottom;
+    animation: login-agent-wave 1.9s ease-in-out infinite;
+  }
+
+  .login-agent-progress {
+    position: relative;
+  }
+
+  .login-agent-progress::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: var(--signal, 18%);
+    border-radius: inherit;
+    background: linear-gradient(90deg, #2563eb, #38bdf8, #99f6e4);
+    box-shadow: 0 0 24px rgba(56, 189, 248, 0.36);
+    transition: width 260ms ease;
+  }
+
+  .login-agent-step-line {
+    width: 38%;
+    animation: login-agent-scan 2.8s ease-in-out infinite;
+  }
+}
+
+@keyframes login-agent-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -10px, 22px) rotate(1.5deg);
+  }
+}
+
+@keyframes login-agent-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes login-agent-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes login-agent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes login-agent-type-line {
+  0%,
+  100% {
+    transform: scaleX(0.48);
+    opacity: 0.58;
+  }
+  45% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes login-agent-dot {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.42;
+  }
+  50% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+@keyframes login-agent-caret {
+  0%,
+  48% {
+    opacity: 1;
+  }
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes login-agent-wave {
+  0%,
+  100% {
+    transform: scaleY(0.55);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes login-agent-scan {
+  0%,
+  100% {
+    width: 28%;
+    opacity: 0.55;
+  }
+  50% {
+    width: 100%;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-agent-glass,
+  .login-agent-orb,
+  .login-agent-ring,
+  .login-agent-node,
+  .login-agent-chat,
+  .login-agent-step,
+  .login-agent-wave,
+  .login-agent-dot,
+  .login-agent-caret,
+  .login-agent-typed-line,
+  .login-agent-step-line {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }

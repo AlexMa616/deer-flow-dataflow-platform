@@ -5,6 +5,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 
+import { getBackendBaseURL } from "../config";
+
 import {
   cancelUploadJob,
   deleteUploadedFile,
@@ -17,7 +19,6 @@ import {
   type UploadProcessingStatus,
   type UploadResponse,
 } from "./api";
-import { getBackendBaseURL } from "../config";
 
 /**
  * Hook to upload files
@@ -78,18 +79,21 @@ export function useUploadStatus(threadId: string, filename: string) {
 /**
  * Stream upload processing status via SSE and update cache.
  */
-export function useUploadStatusStream(threadId: string, filename?: string) {
+export function useUploadStatusStream(
+  threadId: string,
+  filename?: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (!enabled) return;
     if (!threadId) return;
     if (typeof window === "undefined") return;
     if (typeof EventSource === "undefined") return;
 
     const baseUrl = getBackendBaseURL() || window.location.origin;
-    const url = new URL(
-      `${baseUrl}/api/threads/${threadId}/uploads/stream`,
-    );
+    const url = new URL(`${baseUrl}/api/threads/${threadId}/uploads/stream`);
     if (filename) {
       url.searchParams.set("filename", filename);
     }
@@ -124,7 +128,7 @@ export function useUploadStatusStream(threadId: string, filename?: string) {
     return () => {
       source.close();
     };
-  }, [threadId, filename, queryClient]);
+  }, [enabled, threadId, filename, queryClient]);
 }
 
 /**

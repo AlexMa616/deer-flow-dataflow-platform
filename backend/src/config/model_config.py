@@ -14,6 +14,26 @@ class ModelConfig(BaseModel):
     model: str = Field(..., description="Model name")
     model_config = ConfigDict(extra="allow")
     supports_thinking: bool = Field(default_factory=lambda: False, description="Whether the model supports thinking")
+    supports_plan_mode: bool = Field(
+        default_factory=lambda: True,
+        description="Whether the model supports heavier plan-mode orchestration",
+    )
+    supports_subagents: bool = Field(
+        default_factory=lambda: True,
+        description="Whether the model supports delegated subagent workflows",
+    )
+    preferred_subagent_model: str | None = Field(
+        default_factory=lambda: None,
+        description="Preferred model to use for delegated subagents spawned by this parent model",
+    )
+    preferred_bash_subagent_model: str | None = Field(
+        default_factory=lambda: None,
+        description="Preferred model to use for bash subagents spawned by this parent model",
+    )
+    ultra_uses_plan_mode: bool = Field(
+        default_factory=lambda: True,
+        description="Whether Ultra mode should also enable the heavier todo/plan middleware for this model",
+    )
     when_thinking_enabled: dict | None = Field(
         default_factory=lambda: None,
         description="Extra settings to be passed to the model when thinking is enabled",

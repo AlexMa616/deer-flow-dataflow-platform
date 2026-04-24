@@ -319,7 +319,7 @@ Direct access (without nginx):
 - LangGraph: `http://localhost:2024`
 - Gateway: `http://localhost:8001`
 
-Frontend dev command (when running separately): `pnpm exec next dev --turbo --port 3000`.
+Frontend dev command (when running separately): `pnpm exec next dev --webpack --port 3000`.
 
 ### Frontend Configuration
 

@@ -12,7 +12,14 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, type ComponentProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type KeyboardEventHandler,
+} from "react";
 
 import {
   PromptInput,
@@ -52,7 +59,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from "../ai-elements/model-selector";
-import { Suggestion, Suggestions } from "../ai-elements/suggestion";
+import { Suggestion } from "../ai-elements/suggestion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +70,54 @@ import {
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
 
+function getDefaultModeForModel(
+  model:
+    | {
+        supports_thinking?: boolean;
+      }
+    | undefined,
+): "flash" | "thinking" {
+  if (!model?.supports_thinking) {
+    return "flash";
+  }
+  return "thinking";
+}
+
+function sanitizeModeForModel(
+  mode: "flash" | "thinking" | "pro" | "ultra" | undefined,
+  model:
+    | {
+        supports_thinking?: boolean;
+        supports_plan_mode?: boolean;
+        supports_subagents?: boolean;
+      }
+    | undefined,
+): "flash" | "thinking" | "pro" | "ultra" | undefined {
+  if (!model) {
+    return mode;
+  }
+
+  if (!model.supports_thinking) {
+    return "flash";
+  }
+
+  if (mode === undefined) {
+    return getDefaultModeForModel(model);
+  }
+
+  if (mode === "ultra" && model.supports_subagents === false) {
+    return model.supports_plan_mode === false ? "thinking" : "pro";
+  }
+
+  if (mode === "pro" && model.supports_plan_mode === false) {
+    return "thinking";
+  }
+
+  return mode;
+}
+
 export function InputBox({
+  appearance = "default",
   className,
   disabled,
   autoFocus,
@@ -72,11 +126,15 @@ export function InputBox({
   extraHeader,
   isNewThread,
   initialValue,
+  onDraftChange,
+  onDraftKeyDown,
   onContextChange,
   onSubmit,
   onStop,
+  showInlineSuggestions = true,
   ...props
 }: Omit<ComponentProps<typeof PromptInput>, "onSubmit"> & {
+  appearance?: "default" | "terminal";
   assistantId?: string | null;
   status?: ChatStatus;
   disabled?: boolean;
@@ -89,6 +147,9 @@ export function InputBox({
   extraHeader?: React.ReactNode;
   isNewThread?: boolean;
   initialValue?: string;
+  onDraftChange?: (value: string) => void;
+  onDraftKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+  showInlineSuggestions?: boolean;
   onContextChange?: (
     context: Omit<
       AgentThreadContext,
@@ -103,6 +164,7 @@ export function InputBox({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const isTerminal = appearance === "terminal";
   const { models } = useModels();
   const selectedModel = useMemo(() => {
     if (!context.model_name && models.length > 0) {
@@ -111,7 +173,7 @@ export function InputBox({
         onContextChange?.({
           ...context,
           model_name: model.name,
-          mode: model.supports_thinking ? "pro" : "flash",
+          mode: getDefaultModeForModel(model),
         });
       }, 0);
       return model;
@@ -122,15 +184,28 @@ export function InputBox({
     () => selectedModel?.supports_thinking ?? false,
     [selectedModel],
   );
+  const supportsPlanMode = useMemo(
+    () =>
+      supportThinking && (selectedModel?.supports_plan_mode ?? supportThinking),
+    [selectedModel, supportThinking],
+  );
+  const supportsSubagents = useMemo(
+    () =>
+      supportsPlanMode &&
+      (selectedModel?.supports_subagents ?? supportsPlanMode),
+    [selectedModel, supportsPlanMode],
+  );
   const handleModelSelect = useCallback(
     (model_name: string) => {
+      const nextModel = models.find((m) => m.name === model_name);
       onContextChange?.({
         ...context,
         model_name,
+        mode: sanitizeModeForModel(context.mode, nextModel),
       });
       setModelDialogOpen(false);
     },
-    [onContextChange, context],
+    [context, models, onContextChange],
   );
   const handleModeSelect = useCallback(
     (mode: "flash" | "thinking" | "pro" | "ultra") => {
@@ -154,10 +229,29 @@ export function InputBox({
     },
     [onSubmit, onStop, status],
   );
+  useEffect(() => {
+    if (!selectedModel) {
+      return;
+    }
+    const nextMode = sanitizeModeForModel(context.mode, selectedModel);
+    if (nextMode && nextMode !== context.mode) {
+      setTimeout(() => {
+        onContextChange?.({
+          ...context,
+          mode: nextMode,
+        });
+      }, 0);
+    }
+  }, [context, onContextChange, selectedModel]);
+  useEffect(() => {
+    onDraftChange?.(initialValue ?? "");
+  }, [initialValue, onDraftChange]);
   return (
     <PromptInput
       className={cn(
-        "rounded-[32px] border border-slate-200/80 bg-white/92 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur transition-all duration-300 ease-out [&_[data-slot='input-group']]:rounded-[32px] [&_[data-slot='input-group']]:overflow-hidden [&_[data-slot='input-group']]:border-slate-200/80 [&_[data-slot='input-group']]:bg-white/94 [&_[data-slot='input-group']]:focus-within:ring-0 [&_[data-slot='input-group']]:focus-within:border-slate-300",
+        isTerminal
+          ? "rounded-[28px] border border-white/10 bg-[#080b11] text-slate-100 shadow-[0_22px_70px_rgba(2,6,23,0.38)] backdrop-blur transition-all duration-300 ease-out [&_[data-slot='input-group']]:overflow-hidden [&_[data-slot='input-group']]:rounded-[28px] [&_[data-slot='input-group']]:border-white/10 [&_[data-slot='input-group']]:bg-[#05070d] [&_[data-slot='input-group']]:focus-within:border-cyan-400/30 [&_[data-slot='input-group']]:focus-within:ring-0"
+          : "rounded-[32px] border border-slate-200/80 bg-white/92 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur transition-all duration-300 ease-out [&_[data-slot='input-group']]:overflow-hidden [&_[data-slot='input-group']]:rounded-[32px] [&_[data-slot='input-group']]:border-slate-200/80 [&_[data-slot='input-group']]:bg-white/94 [&_[data-slot='input-group']]:focus-within:border-slate-300 [&_[data-slot='input-group']]:focus-within:ring-0",
         className,
       )}
       disabled={disabled}
@@ -178,15 +272,36 @@ export function InputBox({
       </PromptInputAttachments>
       <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
         <PromptInputTextarea
-          className={cn("size-full text-[15px] leading-7 text-slate-800 placeholder:text-slate-400")}
+          className={cn(
+            "size-full text-[15px] leading-7",
+            isTerminal
+              ? "font-mono text-slate-100 placeholder:text-slate-500"
+              : "text-slate-800 placeholder:text-slate-400",
+          )}
           disabled={disabled}
           placeholder={t.inputBox.placeholder}
           autoFocus={autoFocus}
           defaultValue={initialValue}
+          onChange={(event) => onDraftChange?.(event.currentTarget.value)}
+          onKeyDown={onDraftKeyDown}
         />
       </PromptInputBody>
-      <PromptInputFooter className="flex items-center justify-between gap-3 rounded-b-[32px] border-t border-slate-200/70 bg-white/86 px-3 py-2.5">
-        <PromptInputTools className="items-center gap-1 rounded-full border border-slate-200/85 bg-white px-1 py-1 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
+      <PromptInputFooter
+        className={cn(
+          "flex items-center justify-between gap-3 px-3 py-2.5",
+          isTerminal
+            ? "rounded-b-[28px] border-t border-white/8 bg-[#070a10]"
+            : "rounded-b-[32px] border-t border-slate-200/70 bg-white/86",
+        )}
+      >
+        <PromptInputTools
+          className={cn(
+            "items-center gap-1 px-1 py-1",
+            isTerminal
+              ? "rounded-2xl border border-white/10 bg-[#0b1020] shadow-[0_10px_24px_rgba(2,6,23,0.18)]"
+              : "rounded-full border border-slate-200/85 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.05)]",
+          )}
+        >
           {/* TODO: Add more connectors here
           <PromptInputActionMenu>
             <PromptInputActionMenuTrigger className="px-2!" />
@@ -196,7 +311,14 @@ export function InputBox({
               />
             </PromptInputActionMenuContent>
           </PromptInputActionMenu> */}
-          <AddAttachmentsButton className="rounded-full px-2! text-slate-600 hover:bg-slate-100" />
+          <AddAttachmentsButton
+            className={cn(
+              "px-2!",
+              isTerminal
+                ? "rounded-xl text-slate-400 hover:bg-white/8 hover:text-white"
+                : "rounded-full text-slate-600 hover:bg-slate-100",
+            )}
+          />
           <PromptInputActionMenu>
             <ModeHoverGuide
               mode={
@@ -208,7 +330,14 @@ export function InputBox({
                   : "flash"
               }
             >
-              <PromptInputActionMenuTrigger className="gap-1! rounded-full px-2! text-slate-600 hover:bg-slate-100">
+              <PromptInputActionMenuTrigger
+                className={cn(
+                  "gap-1! px-2!",
+                  isTerminal
+                    ? "rounded-xl text-slate-400 hover:bg-white/8 hover:text-white"
+                    : "rounded-full text-slate-600 hover:bg-slate-100",
+                )}
+              >
                 <div>
                   {context.mode === "flash" && <ZapIcon className="size-3" />}
                   {context.mode === "thinking" && (
@@ -224,6 +353,7 @@ export function InputBox({
                 <div
                   className={cn(
                     "text-xs font-normal",
+                    isTerminal ? "text-inherit" : "",
                     context.mode === "ultra" ? "golden-text" : "",
                   )}
                 >
@@ -300,80 +430,99 @@ export function InputBox({
                       )}
                     </PromptInputActionMenuItem>
                   )}
-                  <PromptInputActionMenuItem
-                    className={cn(
-                      context.mode === "pro"
-                        ? "text-accent-foreground"
-                        : "text-muted-foreground/65",
-                    )}
-                    onSelect={() => handleModeSelect("pro")}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-1 font-bold">
-                        <GraduationCapIcon
-                          className={cn(
-                            "mr-2 size-4",
-                            context.mode === "pro" && "text-accent-foreground",
-                          )}
-                        />
-                        {t.inputBox.proMode}
-                      </div>
-                      <div className="pl-7 text-xs">
-                        {t.inputBox.proModeDescription}
-                      </div>
-                    </div>
-                    {context.mode === "pro" ? (
-                      <CheckIcon className="ml-auto size-4" />
-                    ) : (
-                      <div className="ml-auto size-4" />
-                    )}
-                  </PromptInputActionMenuItem>
-                  <PromptInputActionMenuItem
-                    className={cn(
-                      context.mode === "ultra"
-                        ? "text-accent-foreground"
-                        : "text-muted-foreground/65",
-                    )}
-                    onSelect={() => handleModeSelect("ultra")}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-1 font-bold">
-                        <RocketIcon
-                          className={cn(
-                            "mr-2 size-4",
-                            context.mode === "ultra" && "text-[#dabb5e]",
-                          )}
-                        />
-                        <div
-                          className={cn(
-                            context.mode === "ultra" && "golden-text",
-                          )}
-                        >
-                          {t.inputBox.ultraMode}
+                  {supportsPlanMode && (
+                    <PromptInputActionMenuItem
+                      className={cn(
+                        context.mode === "pro"
+                          ? "text-accent-foreground"
+                          : "text-muted-foreground/65",
+                      )}
+                      onSelect={() => handleModeSelect("pro")}
+                    >
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-1 font-bold">
+                          <GraduationCapIcon
+                            className={cn(
+                              "mr-2 size-4",
+                              context.mode === "pro" &&
+                                "text-accent-foreground",
+                            )}
+                          />
+                          {t.inputBox.proMode}
+                        </div>
+                        <div className="pl-7 text-xs">
+                          {t.inputBox.proModeDescription}
                         </div>
                       </div>
-                      <div className="pl-7 text-xs">
-                        {t.inputBox.ultraModeDescription}
+                      {context.mode === "pro" ? (
+                        <CheckIcon className="ml-auto size-4" />
+                      ) : (
+                        <div className="ml-auto size-4" />
+                      )}
+                    </PromptInputActionMenuItem>
+                  )}
+                  {supportsSubagents && (
+                    <PromptInputActionMenuItem
+                      className={cn(
+                        context.mode === "ultra"
+                          ? "text-accent-foreground"
+                          : "text-muted-foreground/65",
+                      )}
+                      onSelect={() => handleModeSelect("ultra")}
+                    >
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-1 font-bold">
+                          <RocketIcon
+                            className={cn(
+                              "mr-2 size-4",
+                              context.mode === "ultra" && "text-[#dabb5e]",
+                            )}
+                          />
+                          <div
+                            className={cn(
+                              context.mode === "ultra" && "golden-text",
+                            )}
+                          >
+                            {t.inputBox.ultraMode}
+                          </div>
+                        </div>
+                        <div className="pl-7 text-xs">
+                          {t.inputBox.ultraModeDescription}
+                        </div>
                       </div>
-                    </div>
-                    {context.mode === "ultra" ? (
-                      <CheckIcon className="ml-auto size-4" />
-                    ) : (
-                      <div className="ml-auto size-4" />
-                    )}
-                  </PromptInputActionMenuItem>
+                      {context.mode === "ultra" ? (
+                        <CheckIcon className="ml-auto size-4" />
+                      ) : (
+                        <div className="ml-auto size-4" />
+                      )}
+                    </PromptInputActionMenuItem>
+                  )}
                 </PromptInputActionMenu>
               </DropdownMenuGroup>
             </PromptInputActionMenuContent>
           </PromptInputActionMenu>
         </PromptInputTools>
-        <PromptInputTools className="items-center gap-2 rounded-full border border-slate-200/85 bg-white px-2 py-1 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
+        <PromptInputTools
+          className={cn(
+            "items-center gap-2 px-2 py-1",
+            isTerminal
+              ? "rounded-2xl border border-white/10 bg-[#0b1020] shadow-[0_10px_24px_rgba(2,6,23,0.18)]"
+              : "rounded-full border border-slate-200/85 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.05)]",
+          )}
+        >
           <ModelSelector
             open={modelDialogOpen}
             onOpenChange={setModelDialogOpen}
           >
             <ModelSelectorTrigger asChild>
-              <PromptInputButton className="rounded-full px-3 text-slate-600 hover:bg-slate-100">
+              <PromptInputButton
+                className={cn(
+                  "px-3",
+                  isTerminal
+                    ? "rounded-xl text-slate-300 hover:bg-white/8 hover:text-white"
+                    : "rounded-full text-slate-600 hover:bg-slate-100",
+                )}
+              >
                 <ModelSelectorName className="text-xs font-normal">
                   {selectedModel?.display_name}
                 </ModelSelectorName>
@@ -400,23 +549,29 @@ export function InputBox({
             </ModelSelectorContent>
           </ModelSelector>
           <PromptInputSubmit
-            className="rounded-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)] hover:brightness-110"
+            className={cn(
+              isTerminal
+                ? "rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,#083344_0%,#0f172a_100%)] text-cyan-50 shadow-[0_10px_24px_rgba(8,145,178,0.18)] hover:brightness-110"
+                : "rounded-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)] hover:brightness-110",
+            )}
             disabled={disabled}
             variant="default"
             status={status}
           />
         </PromptInputTools>
       </PromptInputFooter>
-      {isNewThread && searchParams.get("mode") !== "skill" && (
-        <div className="mt-4 flex items-center justify-center">
-          <SuggestionList />
-        </div>
-      )}
+      {showInlineSuggestions &&
+        isNewThread &&
+        searchParams.get("mode") !== "skill" && (
+          <div className="mt-4 flex items-center justify-center">
+            <PromptSuggestionList />
+          </div>
+        )}
     </PromptInput>
   );
 }
 
-function SuggestionList() {
+export function PromptSuggestionList({ className }: { className?: string }) {
   const { t } = useI18n();
   const { textInput } = usePromptInputController();
   const handleSuggestionClick = useCallback(
@@ -440,7 +595,12 @@ function SuggestionList() {
     [textInput],
   );
   return (
-    <Suggestions className="min-h-16 w-fit items-start">
+    <div
+      className={cn(
+        "flex max-w-full flex-wrap items-center justify-center gap-2.5",
+        className,
+      )}
+    >
       <ConfettiButton
         className="text-muted-foreground cursor-pointer rounded-full px-4 text-xs font-normal"
         variant="outline"
@@ -481,7 +641,7 @@ function SuggestionList() {
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-    </Suggestions>
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@ from langchain.tools import tool
 
 from src.community.jina_ai.jina_client import JinaClient
 from src.config import get_app_config
-from src.utils.readability import ReadabilityExtractor
+from src.utils.readability import Article, ReadabilityExtractor
 
 readability_extractor = ReadabilityExtractor()
 
@@ -24,5 +24,8 @@ def web_fetch_tool(url: str) -> str:
     if config is not None and "timeout" in config.model_extra:
         timeout = config.model_extra.get("timeout")
     html_content = jina_client.crawl(url, return_format="html", timeout=timeout)
-    article = readability_extractor.extract_article(html_content)
+    try:
+        article = readability_extractor.extract_article(html_content)
+    except Exception:
+        article = Article(title="Fetched page", html_content=html_content)
     return article.to_markdown()[:4096]

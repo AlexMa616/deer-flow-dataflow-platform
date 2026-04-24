@@ -1,8 +1,12 @@
+import logging
 import re
+import subprocess
 from urllib.parse import urljoin
 
 from markdownify import markdownify as md
 from readabilipy import simple_json_from_html_string
+
+logger = logging.getLogger(__name__)
 
 
 class Article:
@@ -53,14 +57,38 @@ class Article:
 
 class ReadabilityExtractor:
     def extract_article(self, html: str) -> Article:
-        article = simple_json_from_html_string(html, use_readability=True)
+        article: dict | None = None
 
-        html_content = article.get("content")
+        try:
+            article = simple_json_from_html_string(html, use_readability=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            logger.warning(
+                "Readability parser unavailable, falling back to basic HTML extraction: %s",
+                exc,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Readability parser failed, falling back to basic HTML extraction: %s",
+                exc,
+            )
+
+        if article is None:
+            try:
+                article = simple_json_from_html_string(html, use_readability=False)
+            except Exception as exc:
+                logger.warning(
+                    "Basic HTML extraction failed, falling back to raw HTML: %s",
+                    exc,
+                )
+                article = {}
+
+        html_content = article.get("content") if isinstance(article, dict) else None
         if not html_content or not str(html_content).strip():
-            html_content = "No content could be extracted from this page"
+            html_content = html
 
-        title = article.get("title")
+        title = article.get("title") if isinstance(article, dict) else None
         if not title or not str(title).strip():
-            title = "Untitled"
+            match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.I | re.S)
+            title = re.sub(r"\s+", " ", match.group(1)).strip() if match else "Untitled"
 
         return Article(title=title, html_content=html_content)

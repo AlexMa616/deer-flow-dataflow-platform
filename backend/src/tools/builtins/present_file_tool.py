@@ -6,6 +6,7 @@ from langgraph.types import Command
 from langgraph.typing import ContextT
 
 from src.agents.thread_state import ThreadState
+from src.tools.events import emit_tool_result, emit_tool_start
 
 
 @tool("present_files", parse_docstring=True)
@@ -33,6 +34,24 @@ def present_file_tool(
     Args:
         filepaths: List of absolute file paths to present to the user. **Only** files in `/mnt/user-data/outputs` can be presented.
     """
+    preview = ", ".join(filepaths[:3])
+    if len(filepaths) > 3:
+        preview = f"{preview} (+{len(filepaths) - 3} more)"
+
+    emit_tool_start(
+        "present_files",
+        tool_call_id=tool_call_id,
+        summary=f"Present {len(filepaths)} file(s)",
+        path=filepaths[0] if len(filepaths) == 1 else None,
+    )
+    emit_tool_result(
+        "present_files",
+        tool_call_id=tool_call_id,
+        summary=f"Presented {len(filepaths)} file(s)",
+        preview=preview or "No files provided",
+        path=filepaths[0] if len(filepaths) == 1 else None,
+    )
+
     # The merge_artifacts reducer will handle merging and deduplication
     return Command(
         update={"artifacts": filepaths, "messages": [ToolMessage("Successfully presented files", tool_call_id=tool_call_id)]},
