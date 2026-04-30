@@ -54,6 +54,7 @@ import {
 import { useUploadStatusStream } from "@/core/uploads/hooks";
 import { uuid } from "@/core/utils/uuid";
 import { env } from "@/env";
+import { fetchMe, getUser, type User } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const SemanticSearchFloating = dynamic(
@@ -118,9 +119,41 @@ export default function ChatPage() {
     () => threadIdFromPath === "new",
     [threadIdFromPath],
   );
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [newThreadSubmitted, setNewThreadSubmitted] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const threadBootstrapRequestRef = useRef(0);
+
   useEffect(() => {
+    let active = true;
+    const localUser = getUser();
+    if (localUser) {
+      setCurrentUser(localUser);
+    }
+
+    void fetchMe()
+      .then((user) => {
+        if (active) {
+          setCurrentUser(user as User);
+        }
+      })
+      .catch(() => {
+        if (active && !localUser) {
+          setCurrentUser(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const userDisplayName = currentUser?.username?.trim() ?? "DeerFlow";
+  const userInitials = userDisplayName.slice(0, 2).toUpperCase();
+
+  useEffect(() => {
+    setNewThreadSubmitted(false);
+
     let cancelled = false;
     const requestId = threadBootstrapRequestRef.current + 1;
     threadBootstrapRequestRef.current = requestId;
@@ -223,6 +256,9 @@ export default function ChatPage() {
     setStreamError(null);
   }, [threadId]);
 
+  const showNewThreadLanding =
+    isNewThread && !newThreadSubmitted && !thread.isLoading;
+
   const title = useMemo(() => {
     let result = isNewThread
       ? ""
@@ -282,7 +318,8 @@ export default function ChatPage() {
   const [todoListCollapsed, setTodoListCollapsed] = useState(true);
   const [semanticReady, setSemanticReady] = useState(false);
   const showWelcome = useMemo(() => {
-    if (isNewThread) return true;
+    if (showNewThreadLanding) return true;
+    if (isNewThread) return false;
     const messages = (thread.values.messages ?? []) as Message[];
     const hasConversation = messages.some((message) => {
       const role =
@@ -320,7 +357,7 @@ export default function ChatPage() {
       return text.length > 0;
     });
     return !hasConversation;
-  }, [isNewThread, thread.values.messages]);
+  }, [isNewThread, showNewThreadLanding, thread.values.messages]);
   const shouldShowSemanticSearch =
     semanticReady && !isNewThread && !showWelcome;
 
@@ -342,7 +379,7 @@ export default function ChatPage() {
         (settings.context.mode === "ultra" && ultraUsesPlanMode),
       subagent_enabled: settings.context.mode === "ultra",
       max_concurrent_subagents:
-        settings.context.mode === "ultra" ? 1 : undefined,
+        settings.context.mode === "ultra" ? 3 : undefined,
     },
     afterSubmit() {
       router.push(pathOfThread(threadId!));
@@ -379,10 +416,23 @@ export default function ChatPage() {
       }
 
       setStreamError(null);
-      await handleSubmit(message);
+      if (isNewThread) {
+        setNewThreadSubmitted(true);
+      }
+      try {
+        await handleSubmit(message);
+      } catch (error) {
+        const display = getThreadErrorDisplay(error);
+        setStreamError(display);
+        toast.error(display.message);
+        if (isNewThread) {
+          setNewThreadSubmitted(false);
+        }
+      }
     },
     [
       handleSubmit,
+      isNewThread,
       settings.context.model_name,
       systemOverview?.request_guardrails,
     ],
@@ -412,24 +462,32 @@ export default function ChatPage() {
             <header
               className={cn(
                 "absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center px-4",
-                isNewThread
+                showNewThreadLanding
                   ? "bg-background/0 backdrop-blur-none"
                   : "border-b border-slate-200/70 bg-white/70 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur",
               )}
             >
-              {isNewThread ? (
+              {showNewThreadLanding ? (
                 <div className="flex w-full items-center justify-between">
                   <div className="inline-flex items-center gap-2.5">
-                    <AlexMark compact className="h-8 w-8 rounded-lg" />
+                    <AlexMark
+                      compact
+                      label={userInitials}
+                      className="h-8 w-8 rounded-lg"
+                    />
                     <span className="text-2xl font-medium tracking-tight text-slate-800">
-                      Alex
+                      {userDisplayName}
                     </span>
                   </div>
                   <div className="inline-flex items-center gap-2">
                     <span className="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-semibold tracking-[0.12em] text-slate-700">
                       PRO
                     </span>
-                    <AlexMark compact className="h-8 w-8 rounded-full" />
+                    <AlexMark
+                      compact
+                      label={userInitials}
+                      className="h-8 w-8 rounded-full"
+                    />
                   </div>
                 </div>
               ) : (
@@ -489,7 +547,7 @@ export default function ChatPage() {
               <div className="flex min-h-0 flex-1 justify-center">
                 <MessageList
                   className={cn(
-                    streamError ? "pt-28" : !isNewThread && "pt-10",
+                    streamError ? "pt-28" : !showNewThreadLanding && "pt-10",
                   )}
                   threadId={threadId}
                   thread={thread}
@@ -507,7 +565,7 @@ export default function ChatPage() {
               <div
                 className={cn(
                   "absolute inset-x-0 z-30 flex justify-center px-3 md:px-4",
-                  isNewThread
+                  showNewThreadLanding
                     ? "top-[46%] bottom-auto -translate-y-1/2"
                     : "bottom-0",
                 )}
@@ -515,7 +573,7 @@ export default function ChatPage() {
                 <div
                   className={cn(
                     "relative w-full",
-                    isNewThread
+                    showNewThreadLanding
                       ? "max-w-(--container-width-md)"
                       : "max-w-(--container-width-lg)",
                   )}
@@ -545,7 +603,7 @@ export default function ChatPage() {
                     <InputBox
                       className={cn(
                         "w-full border border-slate-200/85 bg-white/92 text-slate-900 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl",
-                        !isNewThread && "-translate-y-4",
+                        !showNewThreadLanding && "-translate-y-4",
                       )}
                       isNewThread={showWelcome}
                       showInlineSuggestions={false}

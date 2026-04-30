@@ -57,6 +57,16 @@ class MemoryUpdateQueue:
             # If so, replace it with the newer one
             self._queue = [c for c in self._queue if c.thread_id != thread_id]
             self._queue.append(context)
+            if len(self._queue) > config.max_pending_contexts:
+                overflow = len(self._queue) - config.max_pending_contexts
+                dropped = self._queue[:overflow]
+                self._queue = self._queue[overflow:]
+                logger.warning(
+                    "Dropped %d oldest pending memory update(s) to keep queue under max_pending_contexts=%d: %s",
+                    overflow,
+                    config.max_pending_contexts,
+                    [item.thread_id for item in dropped],
+                )
 
             # Reset or start the debounce timer
             self._reset_timer()

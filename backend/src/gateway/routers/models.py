@@ -21,6 +21,10 @@ class ModelResponse(BaseModel):
         default=True,
         description="Whether model supports delegated subagent workflows",
     )
+    supports_workflow_modes: bool = Field(
+        default=False,
+        description="Whether the UI should expose workflow intensity modes for this model",
+    )
     ultra_uses_plan_mode: bool = Field(
         default=True,
         description="Whether Ultra mode should also enable heavier todo/plan orchestration",
@@ -77,6 +81,7 @@ async def list_models() -> ModelsListResponse:
             supports_thinking=model.supports_thinking,
             supports_plan_mode=model.supports_plan_mode,
             supports_subagents=model.supports_subagents,
+            supports_workflow_modes=model.supports_workflow_modes,
             ultra_uses_plan_mode=model.ultra_uses_plan_mode,
         )
         for model in config.models
@@ -124,5 +129,6 @@ async def get_model(model_name: str) -> ModelResponse:
         supports_thinking=model.supports_thinking,
         supports_plan_mode=model.supports_plan_mode,
         supports_subagents=model.supports_subagents,
+        supports_workflow_modes=model.supports_workflow_modes,
         ultra_uses_plan_mode=model.ultra_uses_plan_mode,
     )

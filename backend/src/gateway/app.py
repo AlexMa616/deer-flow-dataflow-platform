@@ -160,6 +160,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Workflow runs API is mounted at /api/threads/{thread_id}/workflow-runs
     app.include_router(workflows.router)
+    app.include_router(workflows.thread_router)
 
     # Health API is mounted at /api/health
     app.include_router(health.router)

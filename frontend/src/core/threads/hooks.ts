@@ -16,6 +16,7 @@ import type {
   AgentThreadContext,
   AgentThreadState,
 } from "./types";
+import { getThreadErrorDisplay } from "./utils";
 
 const THREAD_HISTORY_STATE_LIMIT = 500;
 
@@ -146,34 +147,57 @@ export function useSubmitThread({
         }
       }
 
-      await thread.submit(
-        {
-          messages: [
-            {
-              type: "human",
-              content: [
-                {
-                  type: "text",
-                  text,
-                },
-              ],
-            },
-          ] as HumanMessage[],
+      if (!isNewThread && threadId) {
+        await getAPIClient().threads.create({
+          threadId,
+          ifExists: "do_nothing",
+        });
+      }
+
+      const runContext = {
+        ...threadContext,
+        thread_id: threadId,
+      };
+
+      const submitOptions = {
+        threadId: isNewThread ? threadId! : undefined,
+        streamSubgraphs: true,
+        streamResumable: true,
+        config: {
+          recursion_limit: 1000,
         },
-        {
-          threadId: isNewThread ? threadId! : undefined,
-          streamSubgraphs: true,
-          streamResumable: true,
-          streamMode: ["values", "messages-tuple", "custom"],
-          config: {
-            recursion_limit: 1000,
+        streamMode: "values",
+        context: runContext,
+      } as unknown as NonNullable<Parameters<typeof thread.submit>[1]>;
+
+      const submitPayload = {
+        messages: [
+          {
+            type: "human",
+            content: [
+              {
+                type: "text",
+                text,
+              },
+            ],
           },
-          context: {
-            ...threadContext,
-            thread_id: threadId,
-          },
-        },
-      );
+        ] as HumanMessage[],
+      };
+
+      try {
+        await thread.submit(submitPayload, submitOptions);
+      } catch (error) {
+        const display = getThreadErrorDisplay(error);
+        if (display.kind !== "thread_not_found" || !threadId) {
+          throw error;
+        }
+
+        await getAPIClient().threads.create({
+          threadId,
+          ifExists: "do_nothing",
+        });
+        await thread.submit(submitPayload, submitOptions);
+      }
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
       afterSubmit?.();
     },

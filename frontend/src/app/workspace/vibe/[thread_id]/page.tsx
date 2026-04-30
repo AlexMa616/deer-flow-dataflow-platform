@@ -3,15 +3,27 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import type { UseStream } from "@langchain/langgraph-sdk/react";
 import {
+  BotIcon,
   CheckCircleIcon,
+  ClockIcon,
   Code2Icon,
   CopyIcon,
   EyeIcon,
   FileCodeIcon,
+  FolderIcon,
+  GitBranchIcon,
+  Layers3Icon,
+  LogOutIcon,
+  MessageSquareIcon,
+  PlusIcon,
   SearchIcon,
   SparklesIcon,
   SquareArrowOutUpRightIcon,
   SquareTerminalIcon,
+  SettingsIcon,
+  SlidersHorizontalIcon,
+  WorkflowIcon,
+  UserCircleIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -30,6 +42,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArtifactsProvider,
@@ -67,11 +80,15 @@ import {
   useCreateWorkflowRun,
   useUpdateWorkflowRun,
   useWorkflowRuns,
+  useWorkflowStats,
+  useWorkflowThreads,
   type WorkflowRun,
   type WorkflowRunStatus,
+  type WorkflowThreadMapping,
   type WorkflowRunType,
 } from "@/core/workflows";
 import { env } from "@/env";
+import { fetchMe, getUser, logout, type User } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 import {
@@ -85,7 +102,6 @@ import {
 } from "./vibe-command-palette";
 import { VibeErrorBoundary } from "./vibe-error-boundary";
 import {
-  type ActivityItem,
   type AgentCommandItem,
   type ConsoleTab,
   type QuickAction,
@@ -111,27 +127,61 @@ const WORKFLOW_TYPES: WorkflowRunType[] = [
   "skills",
   "automation",
 ];
+const DEFAULT_WORKFLOW_PROJECT_ID = "deer-flow";
+const WORKFLOW_PROJECTS_STORAGE_KEY = "deerflow.workflow-studio.projects";
+const WORKFLOW_ACTIVE_PROJECT_STORAGE_KEY =
+  "deerflow.workflow-studio.active-project";
 
-function formatWorkflowStatusLabel(
-  status: WorkflowRunStatus,
+type StudioMode = "flash" | "thinking" | "pro" | "ultra";
+
+type WorkflowProjectState = {
+  id: string;
+  name: string;
+  description?: string;
+  defaultModel?: string;
+  threadIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+function createDefaultWorkflowProject(
+  isChinese: boolean,
+  modelName?: string,
+): WorkflowProjectState {
+  const now = new Date().toISOString();
+  return {
+    id: DEFAULT_WORKFLOW_PROJECT_ID,
+    name: "deer-flow",
+    description: isChinese ? "当前工作区项目" : "Current workspace project",
+    defaultModel: modelName,
+    threadIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function getThreadLabel(
+  thread: Pick<WorkflowThreadMapping, "thread_id" | "title">,
   isChinese: boolean,
 ) {
-  if (status === "queued") {
-    return isChinese ? "排队中" : "Queued";
+  const title = thread.title?.trim();
+  if (title !== undefined && title.length > 0) {
+    return title;
   }
-  if (status === "running") {
-    return isChinese ? "运行中" : "Running";
+  return isChinese ? "未命名线程" : "Untitled thread";
+}
+
+function getModeLabel(mode: StudioMode | undefined, isChinese: boolean) {
+  if (mode === "flash") {
+    return isChinese ? "快速" : "Fast";
   }
-  if (status === "waiting_approval") {
-    return isChinese ? "待确认" : "Waiting";
+  if (mode === "pro") {
+    return isChinese ? "深度" : "Deep";
   }
-  if (status === "completed") {
-    return isChinese ? "已完成" : "Completed";
+  if (mode === "ultra") {
+    return isChinese ? "超高" : "Ultra";
   }
-  if (status === "failed") {
-    return isChinese ? "失败" : "Failed";
-  }
-  return isChinese ? "已取消" : "Cancelled";
+  return isChinese ? "思考" : "Think";
 }
 
 function sameCheckpointFiles(
@@ -590,8 +640,9 @@ function VibeCodingWorkbench() {
             checkpointSave: "保存快照",
             checkpointSaved: "本地快照已保存",
             checkpointsTitle: "版本快照",
-            commandPlaceholder: "描述你的任务或工作流需求",
-            composerHint: "从这里继续你的任务。",
+            commandPlaceholder: "输入目标，或使用 /project 创建结构化运行",
+            composerHint:
+              "发送后会创建运行记录，并把步骤、结果和资产同步到当前线程。",
             copiedPatch: "补丁已复制",
             createdBy: "Created by Deerflow",
             copyCommand: "复制记录",
@@ -606,13 +657,12 @@ function VibeCodingWorkbench() {
             explorerEmpty: "暂无资产",
             explorerSearchEmpty: "没有匹配的文件，可以换个关键词再试。",
             explorerSearchPlaceholder: "搜索文件或路径",
-            explorerSummary:
-              "项目资产、资料、版本和运行状态都汇聚在同一个工作区。",
+            explorerSummary: "产出会沉淀为资产、快照和运行记录，方便继续推进。",
             explorerTitle: "资产",
             filesCount: "文件",
             exitImmersive: "返回工作区",
-            heroDescription: "工作流空间",
-            heroTitle: "DeerFlow",
+            heroDescription: "把一个目标拆给线程、模型和 agent 协作推进。",
+            heroTitle: "协作工作台",
             focusShell: "定位到日志输入",
             expandTerminal: "放大日志",
             interruptShell: "中断执行",
@@ -625,11 +675,11 @@ function VibeCodingWorkbench() {
             previewLoading: "正在加载内容...",
             previewTab: "预览",
             promptBadge: "任务",
-            paletteCommands: "模板",
-            paletteDescription: "搜索资产、视图和工作流。",
+            paletteCommands: "命令",
+            paletteDescription: "搜索资产、视图和命令。",
             paletteEmpty: "没有匹配结果",
             paletteFiles: "文件",
-            paletteInputPlaceholder: "搜索文件、视图或工作流",
+            paletteInputPlaceholder: "搜索文件、视图或命令",
             paletteNavigation: "导航",
             paletteOpenTabs: "打开的标签",
             palettePrompts: "工作区视图",
@@ -638,56 +688,56 @@ function VibeCodingWorkbench() {
             paletteTrigger: "工作台面板",
             quickActions: [
               {
-                description: "目标、阶段、交付",
+                description: "目标、范围、阶段、交付",
                 icon: FileCodeIcon,
-                label: "项目规划",
+                label: "做项目计划",
                 prompt:
-                  "请把当前需求整理成一个清晰的项目工作流：明确目标、阶段、关键页面或模块、优先级和下一步，并输出适合继续执行的结构化计划。",
+                  "请把当前需求整理成可执行项目计划：明确目标、范围、阶段、关键模块、优先级、交付物和下一步行动。",
               },
               {
-                description: "问题、来源、结论",
+                description: "问题、证据、结论、缺口",
                 icon: SearchIcon,
-                label: "研究线程",
+                label: "做资料研究",
                 prompt:
-                  "请开启一个研究线程，梳理当前主题的背景、关键问题、结论和待验证点，并给出下一步研究建议。",
+                  "请围绕当前主题建立研究线程：整理背景、关键问题、证据来源、阶段结论、风险和待验证点。",
               },
               {
-                description: "文件、页面、资料",
+                description: "文件、页面、文档、素材",
                 icon: EyeIcon,
-                label: "资源库",
+                label: "整理资源库",
                 prompt:
-                  "请把当前工作区整理成清晰的资源库视角：区分页面、组件、文档、数据和素材，并指出还缺哪些关键资产。",
+                  "请把当前工作区整理成资源库：分类页面、组件、文档、数据和素材，标记可复用资产与缺失内容。",
               },
               {
-                description: "视觉、组件、交互",
+                description: "视觉、组件、交互、规范",
                 icon: SparklesIcon,
-                label: "设计系统",
+                label: "统一设计规范",
                 prompt:
-                  "请基于当前工作区整理一套设计系统方向：视觉基调、版式、组件层级、交互原则和需要统一的设计决策。",
+                  "请基于当前工作区梳理设计规范：视觉基调、版式节奏、组件层级、交互原则和需要统一的设计决策。",
               },
               {
-                description: "skills、plugins、模块",
+                description: "Skills、插件、工具模块",
                 icon: Code2Icon,
-                label: "能力扩展",
+                label: "沉淀复用能力",
                 prompt:
-                  "请从 skills、plugins 和工具扩展的角度审视当前工作区，梳理哪些能力应该沉淀为可复用模块，以及它们的职责和接入方式。",
+                  "请从 skills、plugins、MCP 工具和可复用模块角度审视当前工作区，规划可沉淀能力、职责边界和接入方式。",
               },
               {
-                description: "触发、执行、通知",
+                description: "触发、执行、审批、通知",
                 icon: CheckCircleIcon,
-                label: "自动化",
+                label: "创建自动化",
                 prompt:
-                  "请基于当前工作区设计可执行的自动化流程，包括触发条件、执行动作、输出结果和异常处理。",
+                  "请基于当前工作区设计可落地的自动化流程：定义触发条件、执行动作、审批节点、输出结果和异常处理。",
               },
             ] satisfies QuickAction[],
-            quickStart: "工作流",
+            quickStart: "开始",
             resultSummary: "最近输出",
             reconnectShell: "重新连接",
             restoreTerminal: "还原日志",
             rerunCommand: "重新运行",
             runCommand: "运行",
             modelLabel: "模型",
-            runtimeEmpty: "暂无运行事件",
+            runtimeEmpty: "运行、工具调用和审批会显示在这里。",
             runtimeTitle: "运行与自动化",
             sessionTitle: "线程主线",
             shellDisconnected: "运行环境未连接",
@@ -701,7 +751,7 @@ function VibeCodingWorkbench() {
             stopAgent: "停止 Agent",
             stopShell: "停止环境",
             surfaceHint: "拖动分隔线调整下方面板，在日志、预览和版本之间切换。",
-            taskEmpty: "暂无待办",
+            taskEmpty: "结构化运行开始后会生成待办。",
             tasksTitle: "当前待办",
             terminalEmpty: "日志面板已就绪，可以查看运行输出。",
             terminalNotStartedHint: "运行未启动",
@@ -712,7 +762,7 @@ function VibeCodingWorkbench() {
             showSidebar: "展开侧栏",
             waitingInstruction: "等待下一条指令",
             waitingForOutput: "等待产出",
-            workspaceTitle: "Studio",
+            workspaceTitle: "协作工作台",
           }
         : {
             activityEmpty:
@@ -750,8 +800,9 @@ function VibeCodingWorkbench() {
             checkpointSaved: "Local checkpoint saved",
             checkpointsTitle: "Snapshots",
             commandPlaceholder:
-              "Describe the task or workflow you want to continue",
-            composerHint: "Continue the task from here.",
+              "Type a goal, or use /project for a structured run",
+            composerHint:
+              "Sending creates a run record and syncs steps, output, and assets into this thread.",
             copiedPatch: "Patch copied",
             createdBy: "Created by Deerflow",
             copyCommand: "Copy log",
@@ -769,13 +820,13 @@ function VibeCodingWorkbench() {
               "No files match that search yet. Try a different keyword.",
             explorerSearchPlaceholder: "Search files or paths",
             explorerSummary:
-              "Keep project assets, references, versions, and runtime state together in one workspace.",
+              "Outputs become assets, snapshots, and run records you can continue from.",
             explorerTitle: "Assets",
             filesCount: "files",
             exitImmersive: "Back to workspace",
             heroDescription:
-              "A browser workspace organized around threads, project assets, research, design systems, and automation.",
-            heroTitle: "DeerFlow",
+              "Turn one request into steps, runtime progress, and reviewable output.",
+            heroTitle: "Agent Studio",
             focusShell: "Focus log input",
             expandTerminal: "Expand log",
             interruptShell: "Interrupt run",
@@ -789,12 +840,12 @@ function VibeCodingWorkbench() {
             previewLoading: "Loading content...",
             previewTab: "Preview",
             promptBadge: "Task",
-            paletteCommands: "Workflow Starters",
+            paletteCommands: "Commands",
             paletteDescription:
-              "Quickly search project assets, workspace views, and workflow modules.",
+              "Quickly search project assets, workspace views, and commands.",
             paletteEmpty: "No matching results",
             paletteFiles: "Files",
-            paletteInputPlaceholder: "Search files, views, or workflows",
+            paletteInputPlaceholder: "Search files, views, or commands",
             paletteNavigation: "Navigation",
             paletteOpenTabs: "Open Tabs",
             palettePrompts: "Workspace Views",
@@ -803,63 +854,56 @@ function VibeCodingWorkbench() {
             paletteTrigger: "Workspace Palette",
             quickActions: [
               {
-                description:
-                  "Clarify goals, scope, phases, and delivery structure",
+                description: "Goals, scope, phases, and deliverables",
                 icon: FileCodeIcon,
-                label: "Project Planning",
+                label: "Plan a Project",
                 prompt:
-                  "Turn the current request into a clear project workflow: define goals, phases, key pages or modules, priorities, and the next step in a structured plan.",
+                  "Turn the current request into an executable project plan: define goals, scope, phases, key modules, priorities, deliverables, and the next action.",
               },
               {
-                description:
-                  "Organize questions, sources, conclusions, and open issues",
+                description: "Questions, evidence, findings, and gaps",
                 icon: SearchIcon,
-                label: "Research Thread",
+                label: "Research a Topic",
                 prompt:
-                  "Open a research thread for the current topic: summarize the background, key questions, conclusions, unresolved points, and recommended next research steps.",
+                  "Create a research thread for the current topic: organize background, key questions, evidence, interim findings, risks, and validation gaps.",
               },
               {
-                description:
-                  "Structure pages, documents, data, and reusable assets",
+                description: "Files, pages, docs, and reusable assets",
                 icon: EyeIcon,
-                label: "Resource Library",
+                label: "Organize Library",
                 prompt:
-                  "Reframe the current workspace as a resource library: separate pages, components, documents, data, and assets, then identify what is still missing.",
+                  "Organize the current workspace as a resource library: classify pages, components, documents, data, and assets, then mark reusable items and missing pieces.",
               },
               {
-                description:
-                  "Define visual language, interaction rules, and design decisions",
+                description: "Visuals, components, interaction, and rules",
                 icon: SparklesIcon,
-                label: "Design System",
+                label: "Align Design Rules",
                 prompt:
-                  "Turn the current workspace into a design-system review: clarify the visual direction, layout rules, component hierarchy, interaction principles, and decisions that should be standardized.",
+                  "Review the current workspace as a design system: clarify visual direction, layout rhythm, component hierarchy, interaction principles, and decisions to standardize.",
               },
               {
-                description:
-                  "Plan skills, plugins, and reusable capability modules",
+                description: "Skills, plugins, and tool modules",
                 icon: Code2Icon,
-                label: "Extensions",
+                label: "Package Capabilities",
                 prompt:
-                  "Review this workspace from a skills, plugins, and capability-modules perspective. Identify which capabilities should become reusable extensions and define their responsibilities and integration points.",
+                  "Review this workspace through skills, plugins, MCP tools, and reusable modules. Identify capabilities to package, their boundaries, and integration points.",
               },
               {
-                description:
-                  "Design recurring tasks, notifications, and automation flows",
+                description: "Triggers, actions, approvals, and alerts",
                 icon: CheckCircleIcon,
-                label: "Automation",
+                label: "Create Automation",
                 prompt:
-                  "Design an automation flow for this workspace: define triggers, actions, outputs, dependencies, and failure handling.",
+                  "Design an automation flow for this workspace: define triggers, actions, approval points, outputs, dependencies, and failure handling.",
               },
             ] satisfies QuickAction[],
-            quickStart: "Workflow Modules",
+            quickStart: "Start",
             resultSummary: "Recent Output",
             reconnectShell: "Reconnect",
             restoreTerminal: "Restore logs",
             rerunCommand: "Run again",
             runCommand: "Run",
             modelLabel: "Model",
-            runtimeEmpty:
-              "Runtime events, automation records, and approvals will collect here.",
+            runtimeEmpty: "Runs, tool calls, and approvals will appear here.",
             runtimeTitle: "Runtime & Automation",
             sessionTitle: "Thread Mainline",
             shellDisconnected: "Runtime offline",
@@ -874,7 +918,7 @@ function VibeCodingWorkbench() {
             stopShell: "Stop runtime",
             surfaceHint:
               "Drag the divider to resize the lower dock, or jump between Logs, Preview, and Versions.",
-            taskEmpty: "No tasks yet",
+            taskEmpty: "Tasks will appear after a structured run starts.",
             tasksTitle: "Current tasks",
             terminalEmpty:
               "The log panel is ready. Activity output will appear here.",
@@ -887,7 +931,7 @@ function VibeCodingWorkbench() {
             showSidebar: "Show sidebar",
             waitingInstruction: "waiting for the next instruction",
             waitingForOutput: "Waiting for output",
-            workspaceTitle: "Studio",
+            workspaceTitle: "Agent Studio",
           },
     [isChinese],
   );
@@ -915,6 +959,13 @@ function VibeCodingWorkbench() {
   >(null);
   const [autoCheckpointTick, setAutoCheckpointTick] = useState(0);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [workflowProjects, setWorkflowProjects] = useState<
+    WorkflowProjectState[]
+  >([]);
+  const [activeProjectId, setActiveProjectId] = useState(
+    DEFAULT_WORKFLOW_PROJECT_ID,
+  );
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEventItem[]>([]);
   const [pendingCommandApproval, setPendingCommandApproval] =
     useState<PendingCommandApproval | null>(null);
@@ -950,12 +1001,116 @@ function VibeCodingWorkbench() {
   const workflowRunsQuery = useWorkflowRuns(threadId, {
     enabled: Boolean(threadId),
   });
+  const workflowStatsQuery = useWorkflowStats(threadId, {
+    enabled: Boolean(threadId),
+  });
+  const workflowThreadsQuery = useWorkflowThreads(
+    currentUser?.id ? String(currentUser.id) : undefined,
+  );
   const createWorkflowRun = useCreateWorkflowRun(threadId);
   const updateWorkflowRun = useUpdateWorkflowRun(threadId);
   const { data: systemOverview } = useSystemOverview();
   const approvalMode = workspacePrefs.approvalMode as ApprovalMode;
   const hookToggles = workspacePrefs.hookToggles;
   const compactNotes = workspacePrefs.compactNotes;
+
+  useEffect(() => {
+    let active = true;
+    const localUser = getUser();
+    if (localUser) {
+      setCurrentUser(localUser);
+    }
+
+    void fetchMe()
+      .then((user) => {
+        if (active) {
+          setCurrentUser(user as User);
+        }
+      })
+      .catch(() => {
+        if (active && !localUser) {
+          setCurrentUser(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const currentModelName =
+    typeof settings.context.model_name === "string"
+      ? settings.context.model_name
+      : undefined;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let nextProjects: WorkflowProjectState[] = [];
+    try {
+      const rawProjects = window.localStorage.getItem(
+        WORKFLOW_PROJECTS_STORAGE_KEY,
+      );
+      if (rawProjects) {
+        const parsed = JSON.parse(rawProjects) as WorkflowProjectState[];
+        if (Array.isArray(parsed)) {
+          nextProjects = parsed.filter(
+            (project) =>
+              typeof project.id === "string" &&
+              typeof project.name === "string",
+          );
+        }
+      }
+    } catch {
+      nextProjects = [];
+    }
+
+    if (nextProjects.length === 0) {
+      nextProjects = [
+        createDefaultWorkflowProject(isChinese, currentModelName),
+      ];
+    }
+
+    setWorkflowProjects(nextProjects);
+
+    const storedActiveProject = window.localStorage.getItem(
+      WORKFLOW_ACTIVE_PROJECT_STORAGE_KEY,
+    );
+    if (
+      storedActiveProject &&
+      nextProjects.some((project) => project.id === storedActiveProject)
+    ) {
+      setActiveProjectId(storedActiveProject);
+    } else {
+      setActiveProjectId(nextProjects[0]?.id ?? DEFAULT_WORKFLOW_PROJECT_ID);
+    }
+  }, [currentModelName, isChinese]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || workflowProjects.length === 0) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      WORKFLOW_PROJECTS_STORAGE_KEY,
+      JSON.stringify(workflowProjects),
+    );
+  }, [workflowProjects]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      WORKFLOW_ACTIVE_PROJECT_STORAGE_KEY,
+      activeProjectId,
+    );
+  }, [activeProjectId]);
+
+  const userDisplayName = currentUser?.username?.trim() ?? "DeerFlow";
+  const userInitials = userDisplayName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
     let cancelled = false;
@@ -1016,6 +1171,36 @@ function VibeCodingWorkbench() {
       const summary = latestAssistantMessage
         ? summarizeCheckpointSummary(textOfMessage(latestAssistantMessage), 900)
         : undefined;
+      const currentRun = workflowRunsQuery.data?.runs?.find(
+        (run) => run.id === runId,
+      );
+      const steps = currentRun?.steps.map((step) => {
+        if (status === "completed") {
+          return {
+            ...step,
+            detail: step.detail ?? (isChinese ? "已完成" : "Completed"),
+            status: "completed" as const,
+          };
+        }
+        if (status === "failed") {
+          return {
+            ...step,
+            detail: step.detail ?? getThreadErrorDisplay(error).message,
+            status:
+              step.status === "completed"
+                ? ("completed" as const)
+                : ("failed" as const),
+          };
+        }
+        return {
+          ...step,
+          detail: step.detail ?? (isChinese ? "已取消" : "Cancelled"),
+          status:
+            step.status === "completed"
+              ? ("completed" as const)
+              : ("skipped" as const),
+        };
+      });
 
       activeWorkflowRunIdRef.current = null;
 
@@ -1028,6 +1213,7 @@ function VibeCodingWorkbench() {
                 ? getThreadErrorDisplay(error).message
                 : undefined,
             outputs: state?.artifacts ?? undefined,
+            steps,
             status,
             summary,
           },
@@ -1036,7 +1222,7 @@ function VibeCodingWorkbench() {
           console.error("Failed to update workflow run", updateError);
         });
     },
-    [threadId, updateWorkflowRun],
+    [isChinese, threadId, updateWorkflowRun, workflowRunsQuery.data?.runs],
   );
 
   const thread = useThreadStream({
@@ -1070,12 +1256,12 @@ function VibeCodingWorkbench() {
       is_plan_mode:
         settings.context.mode === "pro" ||
         (settings.context.mode === "ultra" &&
-          (models.find((model) => model.name === settings.context.model_name)
+          (models.find((model) => model.name === currentModelName)
             ?.ultra_uses_plan_mode ??
             true)),
       subagent_enabled: settings.context.mode === "ultra",
       max_concurrent_subagents:
-        settings.context.mode === "ultra" ? 1 : undefined,
+        settings.context.mode === "ultra" ? 3 : undefined,
     },
     afterSubmit() {
       const nextHref = safeReturnTo
@@ -1115,10 +1301,7 @@ function VibeCodingWorkbench() {
         (await fetchSystemOverview()
           .then((data) => data.request_guardrails)
           .catch(() => null));
-      const selectedModelName =
-        typeof settings.context.model_name === "string"
-          ? settings.context.model_name
-          : null;
+      const selectedModelName = currentModelName ?? null;
       const blocksChineseContent = Boolean(
         selectedModelName &&
         requestGuardrails?.blocked_chinese_model_names.includes(
@@ -1146,7 +1329,7 @@ function VibeCodingWorkbench() {
       handleSubmit,
       hookToggles,
       isChinese,
-      settings.context.model_name,
+      currentModelName,
       systemOverview?.request_guardrails,
     ],
   );
@@ -1373,6 +1556,88 @@ function VibeCodingWorkbench() {
       : isChinese
         ? "上下文稳定"
         : "Context stable";
+  const selectedModel = useMemo(
+    () =>
+      models.find((model) => model.name === currentModelName) ??
+      models[0] ??
+      null,
+    [currentModelName, models],
+  );
+  const selectedMode = (settings.context.mode ?? "thinking") as StudioMode;
+  const availableStudioModes = useMemo(() => {
+    const options: StudioMode[] = ["flash"];
+    const supportsWorkflowThinking =
+      Boolean(selectedModel?.supports_thinking) ||
+      Boolean(selectedModel?.supports_workflow_modes);
+    if (supportsWorkflowThinking) {
+      options.push("thinking");
+    }
+    if (
+      supportsWorkflowThinking &&
+      selectedModel?.supports_plan_mode !== false
+    ) {
+      options.push("pro");
+    }
+    if (
+      supportsWorkflowThinking &&
+      selectedModel?.supports_plan_mode !== false &&
+      selectedModel?.supports_subagents !== false
+    ) {
+      options.push("ultra");
+    }
+    return options;
+  }, [selectedModel]);
+  const safeSelectedMode = availableStudioModes.includes(selectedMode)
+    ? selectedMode
+    : (availableStudioModes[0] ?? "flash");
+
+  const handleStudioModelChange = useCallback(
+    (modelName: string) => {
+      const nextModel = models.find((model) => model.name === modelName);
+      let nextMode = settings.context.mode;
+      if (nextModel?.supports_subagents === false && nextMode === "ultra") {
+        nextMode = nextModel.supports_plan_mode === false ? "thinking" : "pro";
+      }
+      if (nextModel?.supports_plan_mode === false && nextMode === "pro") {
+        nextMode = "thinking";
+      }
+      if (
+        !nextModel?.supports_thinking &&
+        !nextModel?.supports_workflow_modes
+      ) {
+        nextMode = "flash";
+      }
+      setSettings("context", {
+        model_name: modelName,
+        mode: nextMode ?? "thinking",
+      });
+      setWorkflowProjects((current) =>
+        current.map((project) =>
+          project.id === activeProjectId
+            ? {
+                ...project,
+                defaultModel: modelName,
+                updatedAt: new Date().toISOString(),
+              }
+            : project,
+        ),
+      );
+    },
+    [activeProjectId, models, setSettings, settings.context.mode],
+  );
+
+  const handleStudioModeChange = useCallback(
+    (mode: StudioMode) => {
+      setSettings("context", { mode });
+    },
+    [setSettings],
+  );
+  const handleStudioWebSearchChange = useCallback(
+    (checked: boolean) => {
+      setSettings("context", { web_search_enabled: checked });
+    },
+    [setSettings],
+  );
 
   const rememberOpenArtifact = useCallback((artifact: string) => {
     setOpenArtifacts((current) =>
@@ -1558,32 +1823,6 @@ function VibeCodingWorkbench() {
     selectedArtifactMeta?.isCodeFile,
     selectedReviewSnapshot,
   ]);
-
-  const activityItems = useMemo(() => {
-    return messages
-      .map((message, index) => {
-        if (message.type !== "human" && message.type !== "ai") {
-          return null;
-        }
-        const text =
-          textOfMessage(message) ??
-          (message.type === "ai"
-            ? thread.isLoading
-              ? copy.agentRunning
-              : copy.agentIdle
-            : "");
-        if (!text) {
-          return null;
-        }
-        return {
-          id: message.id ?? `${message.type}-${index}`,
-          role: message.type === "human" ? "user" : "assistant",
-          text,
-        } satisfies ActivityItem;
-      })
-      .filter((item): item is ActivityItem => item !== null)
-      .slice(-10);
-  }, [copy.agentIdle, copy.agentRunning, messages, thread.isLoading]);
 
   const agentCommandItems = useMemo(() => {
     const streamMessages = messages as unknown as Message[];
@@ -2372,56 +2611,56 @@ function VibeCodingWorkbench() {
     () => [
       {
         description: isChinese
-          ? "聚焦目标、阶段和交付结构"
-          : "Shape goals, phases, and deliverables",
-        label: isChinese ? "项目" : "Projects",
+          ? "把需求拆成路线图、阶段和任务"
+          : "Turn requests into roadmap, phases, and tasks",
+        label: isChinese ? "项目计划" : "Project Plans",
         metric: `${isChinese ? "线程" : "threads"} ${systemOverview?.threads.count ?? 0}`,
         onSelect: () => queuePrompt(copy.quickActions[0]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "整理问题、结论和待验证点"
-          : "Organize questions, findings, and open issues",
-        label: isChinese ? "研究" : "Research",
+          ? "整理问题、证据、结论和缺口"
+          : "Organize questions, evidence, findings, and gaps",
+        label: isChinese ? "研究记录" : "Research Notes",
         metric: `${isChinese ? "资料" : "docs"} ${systemOverview?.vector.documents ?? 0}`,
         onSelect: () => queuePrompt(copy.quickActions[1]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "统一页面、文档和可复用资产"
-          : "Structure pages, docs, and reusable assets",
+          ? "分类页面、文档、组件和素材"
+          : "Classify pages, docs, components, and assets",
         label: isChinese ? "资源库" : "Library",
         metric: `${isChinese ? "资产" : "assets"} ${fileItems.length}`,
         onSelect: () => queuePrompt(copy.quickActions[2]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "提炼视觉语言和设计决策"
-          : "Refine visual language and design decisions",
-        label: isChinese ? "设计系统" : "Design",
+          ? "统一视觉、组件和交互规则"
+          : "Align visuals, components, and interaction rules",
+        label: isChinese ? "设计规范" : "Design Rules",
         metric: `${isChinese ? "快照" : "snapshots"} ${checkpoints.length}`,
         onSelect: () => queuePrompt(copy.quickActions[3]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "沉淀可复用的 skills 能力"
-          : "Turn repeatable workflows into reusable skills",
+          ? "把高频动作沉淀为可复用 Skill"
+          : "Turn repeatable actions into reusable skills",
         label: "Skills",
         metric: `${isChinese ? "启用" : "enabled"} ${systemOverview?.extensions.skills_enabled ?? 0}`,
         onSelect: () => queuePrompt(copy.quickActions[4]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "管理插件、集成和外部扩展"
-          : "Manage integrations and external extensions",
+          ? "管理 MCP、插件和外部集成"
+          : "Manage MCP, plugins, and external integrations",
         label: isChinese ? "插件" : "Plugins",
         metric: `${isChinese ? "接入" : "connected"} ${systemOverview?.extensions.mcp_enabled ?? 0}`,
         onSelect: () => queuePrompt(copy.quickActions[4]?.prompt ?? ""),
       },
       {
         description: isChinese
-          ? "规划触发器、通知和自动推进机制"
-          : "Design triggers, notifications, and recurring flows",
+          ? "设计触发器、审批和执行链路"
+          : "Design triggers, approvals, and execution chains",
         label: isChinese ? "自动化" : "Automation",
         metric: `${isChinese ? "已启用" : "enabled"} ${Object.values(hookToggles).filter(Boolean).length}`,
         onSelect: () => queuePrompt(copy.quickActions[5]?.prompt ?? ""),
@@ -2440,25 +2679,24 @@ function VibeCodingWorkbench() {
       systemOverview?.vector.documents,
     ],
   );
-  const activeWorkflow = copy.quickActions[activeWorkflowIndex] ?? null;
   const workflowGuideItems = useMemo(
     () =>
       isChinese
         ? [
-            ["目标与范围", "阶段拆分", "交付清单"],
-            ["研究问题", "信息来源", "结论整理"],
-            ["资产盘点", "结构整理", "缺口补齐"],
-            ["视觉基调", "组件规则", "交互规范"],
-            ["Skills 设计", "插件接入", "能力复用"],
-            ["触发条件", "执行动作", "通知回路"],
+            ["输入目标", "拆步骤", "生成路线图"],
+            ["提出问题", "整理证据", "输出结论"],
+            ["扫描资产", "分类归档", "标记缺口"],
+            ["识别风格", "统一规则", "生成规范"],
+            ["发现重复", "封装 Skill", "定义接入"],
+            ["定义触发", "编排动作", "记录结果"],
           ]
         : [
-            ["Goal", "Phases", "Deliverables"],
-            ["Questions", "Sources", "Findings"],
-            ["Inventory", "Structure", "Gaps"],
-            ["Visual tone", "Components", "Interaction"],
-            ["Skills", "Plugins", "Reuse"],
-            ["Triggers", "Actions", "Loops"],
+            ["Input goal", "Split steps", "Create roadmap"],
+            ["Ask questions", "Gather evidence", "Ship findings"],
+            ["Scan assets", "Classify library", "Mark gaps"],
+            ["Read style", "Align rules", "Create spec"],
+            ["Find repeats", "Package skill", "Define access"],
+            ["Define trigger", "Run actions", "Record result"],
           ],
     [isChinese],
   );
@@ -2472,47 +2710,47 @@ function VibeCodingWorkbench() {
       isChinese
         ? [
             {
-              abilities: ["拆解目标", "规划阶段", "定义交付"],
-              outputs: ["路线图", "优先级", "下一步"],
-              purpose: "把模糊需求整理成可执行项目。",
-              useCases: ["目标规划", "阶段拆解", "交付推进"],
+              abilities: ["拆目标", "定范围", "排阶段"],
+              outputs: ["路线图", "任务清单", "下一步"],
+              purpose: "把一句需求变成可以继续执行的项目计划。",
+              useCases: ["新功能启动", "重构规划", "项目推进"],
             },
             {
-              abilities: ["梳理问题", "整合来源", "沉淀结论"],
+              abilities: ["定问题", "整理证据", "提结论"],
               outputs: ["研究摘要", "证据列表", "待验证点"],
-              purpose: "把资料和问题组织成研究线程。",
-              useCases: ["问题定义", "资料归纳", "结论沉淀"],
+              purpose: "把零散资料整理成可追踪的研究记录。",
+              useCases: ["背景梳理", "技术调研", "方案对比"],
             },
             {
-              abilities: ["资产归档", "结构分层", "缺口识别"],
+              abilities: ["分类资产", "建立目录", "识别缺口"],
               outputs: ["资源地图", "文件目录", "复用清单"],
-              purpose: "把页面、文档和素材变成资源库。",
-              useCases: ["资产归类", "结构整理", "复用沉淀"],
+              purpose: "把页面、文档和素材整理成可复用资源库。",
+              useCases: ["文件归类", "页面沉淀", "资料整理"],
             },
             {
-              abilities: ["提炼视觉", "统一组件", "定义交互"],
-              outputs: ["设计规则", "组件清单", "体验原则"],
-              purpose: "把零散界面收束成设计系统。",
-              useCases: ["视觉统一", "组件规范", "交互一致"],
+              abilities: ["识别风格", "统一组件", "定义交互"],
+              outputs: ["设计规范", "组件清单", "体验原则"],
+              purpose: "把零散界面收束成一致的产品体验。",
+              useCases: ["界面优化", "组件规范", "体验统一"],
             },
             {
-              abilities: ["抽象技能", "设计插件", "沉淀流程"],
-              outputs: ["Skill 方案", "插件边界", "复用模块"],
-              purpose: "把重复工作变成可复用能力。",
-              useCases: ["能力抽象", "流程复用", "插件接入"],
+              abilities: ["发现重复", "封装 Skill", "规划插件"],
+              outputs: ["Skill 方案", "插件边界", "接入清单"],
+              purpose: "把高频操作沉淀成可复用的工作能力。",
+              useCases: ["流程复用", "工具接入", "团队能力"],
             },
             {
-              abilities: ["设计触发", "编排动作", "处理异常"],
+              abilities: ["定义触发", "编排动作", "处理异常"],
               outputs: ["触发器", "执行链路", "通知策略"],
-              purpose: "把周期性任务设计成自动化流程。",
-              useCases: ["触发设计", "自动执行", "状态通知"],
+              purpose: "把重复任务设计成可追踪的自动化流程。",
+              useCases: ["定时任务", "自动检查", "状态通知"],
             },
           ]
         : [
             {
-              abilities: ["Split goals", "Plan phases", "Define delivery"],
+              abilities: ["Split goals", "Scope work", "Plan phases"],
               outputs: ["Roadmap", "Priorities", "Next step"],
-              purpose: "Turn vague requests into executable project work.",
+              purpose: "Turn one request into a project plan you can execute.",
               useCases: [
                 "Feature kickoff",
                 "Refactor planning",
@@ -2522,33 +2760,29 @@ function VibeCodingWorkbench() {
             {
               abilities: [
                 "Frame questions",
-                "Merge sources",
+                "Organize evidence",
                 "Capture findings",
               ],
               outputs: ["Research brief", "Evidence list", "Open issues"],
-              purpose: "Organize sources and questions into a research thread.",
+              purpose: "Turn scattered sources into traceable research notes.",
               useCases: ["Market review", "Tech research", "Background study"],
             },
             {
-              abilities: ["Archive assets", "Layer structure", "Find gaps"],
+              abilities: ["Classify assets", "Create index", "Find gaps"],
               outputs: ["Asset map", "File index", "Reuse list"],
-              purpose: "Turn pages, docs, and files into a usable library.",
+              purpose: "Turn pages, docs, and files into a reusable library.",
               useCases: ["Handoff", "Component cleanup", "Knowledge base"],
             },
             {
-              abilities: [
-                "Extract style",
-                "Unify components",
-                "Set interaction",
-              ],
+              abilities: ["Read style", "Unify components", "Set interaction"],
               outputs: ["Design rules", "Component list", "UX principles"],
-              purpose: "Turn scattered screens into a design system.",
+              purpose: "Turn scattered screens into a consistent product UX.",
               useCases: ["UI redesign", "Brand alignment", "Component rules"],
             },
             {
-              abilities: ["Shape skills", "Plan plugins", "Package workflows"],
-              outputs: ["Skill plan", "Plugin scope", "Reusable module"],
-              purpose: "Turn repeated work into reusable capabilities.",
+              abilities: ["Find repeats", "Package skills", "Plan plugins"],
+              outputs: ["Skill plan", "Plugin scope", "Integration list"],
+              purpose: "Turn frequent actions into reusable capabilities.",
               useCases: [
                 "Team workflow",
                 "Reusable process",
@@ -2562,7 +2796,7 @@ function VibeCodingWorkbench() {
                 "Handle failures",
               ],
               outputs: ["Trigger plan", "Run chain", "Notification policy"],
-              purpose: "Design recurring tasks as automation flows.",
+              purpose: "Design repeated tasks as traceable automation flows.",
               useCases: ["Scheduled checks", "Auto summaries", "Status alerts"],
             },
           ],
@@ -2572,16 +2806,147 @@ function VibeCodingWorkbench() {
     workflowProductDetails[activeWorkflowIndex] ??
     workflowProductDetails[0] ??
     null;
-  const ActiveWorkflowIcon = activeWorkflow?.icon ?? SparklesIcon;
   const workflowRuns = useMemo(
     () => workflowRunsQuery.data?.runs ?? [],
     [workflowRunsQuery.data?.runs],
   );
+  const workflowStats = workflowStatsQuery.data;
+  const activeWorkflowRunCount =
+    (workflowStats?.status_counts.queued ?? 0) +
+    (workflowStats?.status_counts.running ?? 0) +
+    (workflowStats?.status_counts.waiting_approval ?? 0);
   const latestWorkflowRun = workflowRuns[0] ?? null;
   const activePersistedWorkflowRun =
     workflowRuns.find((run) =>
       ["queued", "running", "waiting_approval"].includes(run.status),
     ) ?? latestWorkflowRun;
+  const workflowThreadMappings = useMemo(
+    () => workflowThreadsQuery.data?.threads ?? [],
+    [workflowThreadsQuery.data?.threads],
+  );
+  const activeProject = useMemo(() => {
+    return (
+      workflowProjects.find((project) => project.id === activeProjectId) ??
+      workflowProjects[0] ??
+      createDefaultWorkflowProject(isChinese, currentModelName)
+    );
+  }, [activeProjectId, currentModelName, isChinese, workflowProjects]);
+  const workflowProjectCards = useMemo(() => {
+    const projects =
+      workflowProjects.length > 0
+        ? workflowProjects
+        : [createDefaultWorkflowProject(isChinese, currentModelName)];
+    const currentThreadMapping: WorkflowThreadMapping | null = threadId
+      ? {
+          created_at: new Date().toISOString(),
+          last_status: activePersistedWorkflowRun?.status ?? null,
+          last_workflow_type: activePersistedWorkflowRun?.workflow_type ?? null,
+          model_name: selectedModel?.name ?? null,
+          project_id: activeProjectId,
+          project_name: activeProject.name,
+          thread_id: threadId,
+          title: sessionTitle,
+          updated_at: new Date().toISOString(),
+          user_id: currentUser?.id ? String(currentUser.id) : "local",
+        }
+      : null;
+
+    return projects.map((project) => {
+      const explicitThreadIds = new Set(project.threadIds);
+      const projectThreads = workflowThreadMappings.filter((mapping) => {
+        const mappingProjectId =
+          mapping.project_id ?? DEFAULT_WORKFLOW_PROJECT_ID;
+        return (
+          mappingProjectId === project.id ||
+          explicitThreadIds.has(mapping.thread_id)
+        );
+      });
+
+      const threadMap = new Map<string, WorkflowThreadMapping>();
+      projectThreads.forEach((mapping) => {
+        threadMap.set(mapping.thread_id, mapping);
+      });
+      if (
+        currentThreadMapping &&
+        (project.id === activeProjectId ||
+          explicitThreadIds.has(currentThreadMapping.thread_id))
+      ) {
+        threadMap.set(currentThreadMapping.thread_id, currentThreadMapping);
+      }
+
+      const threads = Array.from(threadMap.values()).sort(
+        (left, right) =>
+          new Date(right.updated_at).getTime() -
+          new Date(left.updated_at).getTime(),
+      );
+
+      return {
+        ...project,
+        threads,
+      };
+    });
+  }, [
+    activePersistedWorkflowRun?.status,
+    activePersistedWorkflowRun?.workflow_type,
+    activeProject.name,
+    activeProjectId,
+    currentUser?.id,
+    isChinese,
+    selectedModel?.name,
+    sessionTitle,
+    currentModelName,
+    threadId,
+    workflowProjects,
+    workflowThreadMappings,
+  ]);
+  const activeProjectCard =
+    workflowProjectCards.find((project) => project.id === activeProject.id) ??
+    workflowProjectCards[0] ??
+    null;
+  const handleCreateWorkflowProject = useCallback(() => {
+    const now = new Date().toISOString();
+    const nextIndex = workflowProjects.length + 1;
+    const project: WorkflowProjectState = {
+      id: `project-${Date.now().toString(36)}`,
+      name: isChinese ? `项目 ${nextIndex}` : `Project ${nextIndex}`,
+      description: isChinese ? "新的工作项目" : "New work project",
+      defaultModel: selectedModel?.name,
+      threadIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    setWorkflowProjects((current) => [...current, project]);
+    setActiveProjectId(project.id);
+  }, [isChinese, selectedModel?.name, workflowProjects.length]);
+
+  useEffect(() => {
+    if (!threadId || workflowProjects.length === 0) {
+      return;
+    }
+    setWorkflowProjects((current) => {
+      let changed = false;
+      const next = current.map((project) => {
+        if (project.id !== activeProjectId) {
+          return project;
+        }
+        const hasThread = project.threadIds.includes(threadId);
+        const nextModelName = selectedModel?.name ?? project.defaultModel;
+        if (hasThread && project.defaultModel === nextModelName) {
+          return project;
+        }
+        changed = true;
+        return {
+          ...project,
+          defaultModel: nextModelName,
+          threadIds: hasThread
+            ? project.threadIds
+            : [threadId, ...project.threadIds].slice(0, 80),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [activeProjectId, selectedModel?.name, threadId, workflowProjects.length]);
   useEffect(() => {
     if (
       activeWorkflowRunIdRef.current ||
@@ -2598,17 +2963,13 @@ function VibeCodingWorkbench() {
     () => workspaceDomains.slice(4, 7),
     [workspaceDomains],
   );
-  const workspacePath =
-    terminal.state?.cwd ?? "/Users/mahanting/Desktop/deer-flow";
-  const focusLabel = selectedArtifact
-    ? normalizeArtifactPath(selectedArtifact)
-    : copy.waitingForOutput;
 
   const startWorkflowRun = useCallback(
     async (
       action: QuickAction,
       index: number,
       taskDetails?: string,
+      files?: PromptInputMessage["files"],
     ): Promise<WorkflowRun | null> => {
       if (!threadId) {
         return null;
@@ -2624,7 +2985,11 @@ function VibeCodingWorkbench() {
       try {
         const run = await createWorkflowRun.mutateAsync({
           metadata: {
+            agent_mode: selectedMode,
+            model_name: selectedModel?.name ?? currentModelName,
             expected_outputs: detail?.outputs ?? [],
+            project_id: activeProject.id,
+            project_name: activeProject.name,
             purpose: detail?.purpose ?? action.description,
             source: "workflow-workspace",
             use_cases: detail?.useCases ?? [],
@@ -2637,6 +3002,7 @@ function VibeCodingWorkbench() {
             status: "pending",
           })),
           title: action.label,
+          user_id: currentUser?.id ? String(currentUser.id) : undefined,
           workflow_type: workflowType,
         });
 
@@ -2653,10 +3019,12 @@ function VibeCodingWorkbench() {
         });
 
         await submitAgentMessage({
-          files: [],
+          files: files ?? [],
           text: [
             `<workflow_run id="${run.id}" type="${workflowType}" title="${action.label}">`,
+            `<project id="${activeProject.id}" name="${activeProject.name}" model="${selectedModel?.name ?? currentModelName ?? ""}" mode="${selectedMode}">`,
             prompt,
+            "</project>",
             "</workflow_run>",
           ].join("\n"),
         });
@@ -2688,9 +3056,15 @@ function VibeCodingWorkbench() {
     [
       activeWorkflowDetail,
       activeWorkflowGuide,
+      activeProject.id,
+      activeProject.name,
       createWorkflowRun,
+      currentUser?.id,
       isChinese,
       pushRuntimeEvent,
+      selectedMode,
+      selectedModel?.name,
+      currentModelName,
       submitAgentMessage,
       threadId,
       updateWorkflowRun,
@@ -2992,17 +3366,14 @@ function VibeCodingWorkbench() {
         command === "library" ||
         command === "design" ||
         command === "skills" ||
-        command === "automation" ||
-        command === "scaffold" ||
-        command === "refactor" ||
-        command === "fix"
+        command === "automation"
       ) {
         const actionIndex =
-          command === "project" || command === "scaffold"
+          command === "project"
             ? 0
-            : command === "research" || command === "refactor"
+            : command === "research"
               ? 1
-              : command === "library" || command === "fix"
+              : command === "library"
                 ? 2
                 : command === "design"
                   ? 3
@@ -3051,13 +3422,17 @@ function VibeCodingWorkbench() {
 
   const guardedHandleSubmit = useCallback(
     async (message: PromptInputMessage) => {
-      if (await handleSlashCommand(message)) {
+      try {
+        if (await handleSlashCommand(message)) {
+          setComposerDraft("");
+          return;
+        }
+        await submitAgentMessage(message);
         setComposerDraft("");
-        return;
+      } catch (error) {
+        console.error(error);
+        toast.error(getThreadErrorDisplay(error).message);
       }
-
-      await submitAgentMessage(message);
-      setComposerDraft("");
     },
     [handleSlashCommand, submitAgentMessage],
   );
@@ -3197,19 +3572,21 @@ function VibeCodingWorkbench() {
 
   const handleTerminalResize = useCallback(
     (cols: number, rows: number) => {
-      if (cols < 2 || rows < 1) {
+      const nextCols = Math.min(400, Math.max(2, Math.floor(cols)));
+      const nextRows = Math.min(200, Math.max(1, Math.floor(rows)));
+      if (!Number.isFinite(nextCols) || !Number.isFinite(nextRows)) {
         return;
       }
       if (!terminal.state?.session_id || terminal.state.status === "stopped") {
         return;
       }
       if (
-        cols === lastTerminalSizeRef.current.cols &&
-        rows === lastTerminalSizeRef.current.rows
+        nextCols === lastTerminalSizeRef.current.cols &&
+        nextRows === lastTerminalSizeRef.current.rows
       ) {
         return;
       }
-      pendingTerminalSizeRef.current = { cols, rows };
+      pendingTerminalSizeRef.current = { cols: nextCols, rows: nextRows };
       if (terminalResizeDebounceRef.current !== null) {
         window.clearTimeout(terminalResizeDebounceRef.current);
       }
@@ -3593,6 +3970,14 @@ function VibeCodingWorkbench() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-full border border-[#d8e2ee] bg-white px-2.5 py-1.5 text-[#142033] shadow-sm">
+                <span className="grid size-7 place-items-center rounded-full bg-[#eef5ff] text-[#2563eb]">
+                  <UserCircleIcon className="size-4" />
+                </span>
+                <span className="max-w-28 truncate text-xs font-semibold">
+                  {currentUser?.username ?? (isChinese ? "账号" : "Account")}
+                </span>
+              </div>
               <Button
                 type="button"
                 size="sm"
@@ -3627,336 +4012,422 @@ function VibeCodingWorkbench() {
                   {copy.newSession}
                 </Link>
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="rounded-full border-[#d8e2ee] bg-white text-[#b42318] hover:border-[#fecaca] hover:bg-[#fff5f5] hover:text-[#b42318]"
+                onClick={logout}
+              >
+                <LogOutIcon className="size-4" />
+                {isChinese ? "退出" : "Sign out"}
+              </Button>
             </div>
           </div>
         </header>
 
-        <main className="relative z-10 grid h-[calc(100vh-98px)] w-full min-w-0 flex-1 items-stretch gap-4 overflow-hidden p-4 lg:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(500px,34vw)] 2xl:grid-cols-[minmax(0,1fr)_580px]">
-          <section className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1 pb-2">
-            <div className="hidden overflow-hidden rounded-[30px] border border-[#dbe4ef] bg-white/94 px-5 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.06)]">
-              <div className="flex flex-wrap items-end justify-between gap-5">
-                <div className="max-w-3xl min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe7f5] bg-[#f8fbff] px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-[#6d7f97] uppercase">
-                    <span className="size-1.5 rounded-full bg-[#2563eb]" />
-                    {isChinese ? "工作流" : "workflow"}
-                  </div>
-                  <div className="mt-4 text-[34px] leading-tight font-semibold tracking-[-0.045em] text-[#142033]">
-                    {isChinese
-                      ? "选择能力，直接开始。"
-                      : "Choose a capability and start."}
-                  </div>
-                  <p className="mt-3 max-w-2xl text-[15px] leading-7 text-[#61748c]">
-                    {latestAssistantSummary ||
-                      (isChinese
-                        ? "工作流会把你的输入转成计划、研究、资产、设计系统、能力扩展或自动化。"
-                        : "Workflows turn your input into plans, research, assets, design systems, extensions, or automation.")}
-                  </p>
-                </div>
+        <main className="relative z-10 grid h-[calc(100vh-98px)] w-full min-w-0 flex-1 grid-cols-1 overflow-hidden bg-[linear-gradient(135deg,#f6f9fd_0%,#eef6ff_44%,#f8fafc_100%)] xl:grid-cols-[420px_minmax(0,1fr)]">
+          <aside className="hidden min-h-0 flex-col border-r border-[#dce6f2] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(244,249,255,0.9)_100%)] px-5 py-5 shadow-[14px_0_38px_rgba(15,23,42,0.05)] backdrop-blur-xl xl:flex">
+            <div className="space-y-2">
+              {[
+                {
+                  icon: MessageSquareIcon,
+                  label: copy.newSession,
+                  href: newSessionHref,
+                },
+                {
+                  icon: SearchIcon,
+                  label: isChinese ? "搜索" : "Search",
+                  onClick: () => setIsPaletteOpen(true),
+                },
+                {
+                  icon: Layers3Icon,
+                  label: isChinese ? "插件" : "Plugins",
+                  onClick: () =>
+                    queuePrompt(copy.quickActions[4]?.prompt ?? ""),
+                },
+                {
+                  icon: ClockIcon,
+                  label: isChinese ? "自动化" : "Automation",
+                  onClick: () =>
+                    queuePrompt(copy.quickActions[5]?.prompt ?? ""),
+                },
+              ].map((item) => {
+                const Icon = item.icon;
+                const body = (
+                  <span className="flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left text-[15px] font-semibold text-[#263447] transition hover:bg-[#eef5ff] hover:text-[#2563eb]">
+                    <Icon className="size-5 text-[#67788f]" />
+                    {item.label}
+                  </span>
+                );
+                return item.href ? (
+                  <Link key={item.label} href={item.href}>
+                    {body}
+                  </Link>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.onClick}
+                    className="w-full"
+                  >
+                    {body}
+                  </button>
+                );
+              })}
+            </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2 rounded-[24px] border border-[#e2eaf3] bg-[#f8fbff] p-2">
-                  {[
-                    [isChinese ? "动态" : "Updates", activityItems.length],
-                    [isChinese ? "资产" : "Assets", fileItems.length],
-                    [isChinese ? "快照" : "Snapshots", checkpoints.length],
-                    [isChinese ? "待办" : "Tasks", todos.length],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="min-w-20 rounded-[18px] bg-white px-4 py-3 text-center shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
-                    >
-                      <div className="text-lg font-semibold text-[#142033]">
-                        {value}
-                      </div>
-                      <div className="mt-0.5 text-[11px] font-medium text-[#7a8da4]">
-                        {label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className="mt-8 flex items-center justify-between gap-3 px-1">
+              <div className="text-[13px] font-semibold tracking-[0.14em] text-[#8a98aa] uppercase">
+                {isChinese ? "项目" : "Projects"}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="grid size-8 place-items-center rounded-full text-[#7a8899] transition hover:bg-[#eef5ff] hover:text-[#2563eb]"
+                  onClick={() => setIsPaletteOpen(true)}
+                  title={isChinese ? "筛选" : "Filter"}
+                >
+                  <SlidersHorizontalIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className="grid size-8 place-items-center rounded-full text-[#7a8899] transition hover:bg-[#eef5ff] hover:text-[#2563eb]"
+                  onClick={handleCreateWorkflowProject}
+                  title={isChinese ? "新建项目" : "New project"}
+                >
+                  <PlusIcon className="size-4" />
+                </button>
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-[#dbe4ef] bg-white px-5 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.06)]">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold tracking-[0.2em] text-[#6d7f97] uppercase">
-                    {isChinese ? "能力模块" : "modules"}
-                  </div>
-                  <div className="mt-1 text-lg font-semibold tracking-[-0.03em] text-[#142033]">
-                    {isChinese ? "选择工作流" : "Choose workflow"}
-                  </div>
-                </div>
-                {activeWorkflow ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="rounded-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                    disabled={thread.isLoading || createWorkflowRun.isPending}
-                    onClick={() =>
-                      void startWorkflowRun(activeWorkflow, activeWorkflowIndex)
-                    }
-                  >
-                    {createWorkflowRun.isPending
-                      ? isChinese
-                        ? "创建中"
-                        : "Creating"
-                      : isChinese
-                        ? "开始"
-                        : "Start"}
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="mt-5 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                {copy.quickActions.map((action, index) => {
-                  const Icon = action.icon;
-                  const active = index === activeWorkflowIndex;
-                  const detail = workflowProductDetails[index];
+            <ScrollArea className="mt-4 min-h-0 flex-1 pr-2">
+              <div className="space-y-3 pb-6">
+                {workflowProjectCards.map((project) => {
+                  const active = project.id === activeProject.id;
                   return (
-                    <button
-                      key={`${action.label}-${index}`}
-                      type="button"
-                      onClick={() => setActiveWorkflowIndex(index)}
+                    <div
+                      key={project.id}
                       className={cn(
-                        "group rounded-[24px] border px-5 py-4 text-left transition",
+                        "rounded-[22px] border p-2.5 transition",
                         active
-                          ? "border-[#9bc2ff] bg-[linear-gradient(135deg,#edf5ff_0%,#ffffff_100%)] text-[#142033] shadow-[0_16px_38px_rgba(37,99,235,0.10)]"
-                          : "border-[#e2eaf3] bg-[#fbfdff] text-[#61748c] hover:border-[#c8d9eb] hover:bg-white",
+                          ? "border-[#c7d9f4] bg-[linear-gradient(135deg,#edf5ff_0%,#f8fbff_100%)] shadow-[0_18px_38px_rgba(37,99,235,0.1)]"
+                          : "border-[#e4ebf4] bg-white/72 hover:border-[#cfdaea] hover:bg-white",
                       )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "grid size-11 place-items-center rounded-[18px] border transition",
-                              active
-                                ? "border-[#bfdbfe] bg-white text-[#2563eb]"
-                                : "border-[#e2eaf3] bg-white text-[#60748b] group-hover:text-[#2563eb]",
-                            )}
-                          >
-                            <Icon className="size-4" />
-                          </span>
-                          <div>
-                            <div className="text-base font-semibold text-[#142033]">
-                              {action.label}
-                            </div>
-                            <div className="mt-1 text-sm text-[#7a8da4]">
-                              {action.description}
-                            </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveProjectId(project.id)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-[17px] px-3.5 py-3 text-left transition",
+                          active
+                            ? "bg-white/68 text-[#1f3b66]"
+                            : "text-[#60748b] hover:bg-[#f3f7fb] hover:text-[#263447]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "grid size-10 shrink-0 place-items-center rounded-[15px]",
+                            active
+                              ? "bg-[#dfeeff] text-[#1f5fd1]"
+                              : "bg-[#f1f5f9] text-[#6d7f97]",
+                          )}
+                        >
+                          <FolderIcon className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[16px] font-semibold">
+                            {project.name}
+                          </div>
+                          <div className="mt-1 text-xs text-[#8292a6]">
+                            {project.threads.length}{" "}
+                            {isChinese ? "个线程" : "threads"}
                           </div>
                         </div>
-                        <span className="rounded-full border border-[#dbe4ef] bg-white px-2 py-0.5 text-[10px] font-medium text-[#8aa0b6]">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
+                      </button>
+
+                      <div className="mt-2 space-y-1.5 border-t border-[#dfe8f4]/80 pt-2">
+                        {project.threads.slice(0, 6).map((mapping) => {
+                          const threadActive = mapping.thread_id === threadId;
+                          const href = safeReturnTo
+                            ? `/workspace/vibe/${mapping.thread_id}?returnTo=${encodeURIComponent(safeReturnTo)}`
+                            : `/workspace/vibe/${mapping.thread_id}`;
+                          return (
+                            <Link
+                              key={mapping.thread_id}
+                              href={href}
+                              className={cn(
+                                "group flex items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-sm transition",
+                                threadActive
+                                  ? "bg-white text-[#142033] shadow-[0_8px_18px_rgba(15,23,42,0.07)]"
+                                  : "text-[#68778a] hover:bg-white/86 hover:text-[#142033]",
+                              )}
+                            >
+                              <span className="truncate">
+                                {getThreadLabel(mapping, isChinese)}
+                              </span>
+                              <span className="max-w-[42%] shrink-0 truncate text-[11px] text-[#9aa7b6]">
+                                {mapping.model_name ??
+                                  project.defaultModel ??
+                                  ""}
+                              </span>
+                            </Link>
+                          );
+                        })}
+                        {project.threads.length === 0 ? (
+                          <div className="rounded-[14px] border border-dashed border-[#d7e2ef] bg-white/55 px-3 py-3 text-xs leading-5 text-[#8a98aa]">
+                            {isChinese
+                              ? "新建线程后会归入这里。"
+                              : "New threads will appear here."}
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        {(detail?.outputs ?? []).slice(0, 2).map((item) => (
-                          <span
-                            key={item}
-                            className="rounded-full bg-white px-3 py-1.5 text-xs text-[#60748b] ring-1 ring-[#e2eaf3]"
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
+            </ScrollArea>
+          </aside>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-                <div className="rounded-[28px] border border-[#cfe0f5] bg-[linear-gradient(135deg,#edf5ff_0%,#ffffff_62%,#f7fbff_100%)] p-5">
-                  {activeWorkflow && activeWorkflowDetail ? (
-                    <>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 text-sm font-semibold text-[#142033]">
-                          <span className="grid size-10 place-items-center rounded-2xl bg-[#2563eb] text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)]">
-                            <ActiveWorkflowIcon className="size-4" />
-                          </span>
-                          <div>
-                            <div>{activeWorkflow.label}</div>
-                            <div className="mt-1 text-xs font-medium text-[#6d7f97]">
-                              {activeWorkflowDetail.purpose}
-                            </div>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="rounded-full bg-[#142033] text-white hover:bg-[#22344b]"
-                          onClick={() => queuePrompt(activeWorkflow.prompt)}
-                        >
-                          {isChinese ? "写入输入区" : "Send to composer"}
-                        </Button>
-                      </div>
-                      <div className="mt-5 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[22px] border border-white bg-white/82 p-5">
-                          <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                            {isChinese ? "能做" : "Can do"}
-                          </div>
-                          <div className="mt-3 space-y-2">
-                            {activeWorkflowDetail.abilities.map((item) => (
-                              <div
-                                key={item}
-                                className="text-sm font-medium text-[#31475f]"
-                              >
-                                {item}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="rounded-[22px] border border-white bg-white/82 p-5">
-                          <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                            {isChinese ? "应用" : "Use for"}
-                          </div>
-                          <div className="mt-3 space-y-2">
-                            {activeWorkflowDetail.useCases.map((item) => (
-                              <div
-                                key={item}
-                                className="text-sm font-medium text-[#31475f]"
-                              >
-                                {item}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="rounded-[22px] border border-white bg-white/82 p-5">
-                          <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                            {isChinese ? "产出" : "Output"}
-                          </div>
-                          <div className="mt-3 space-y-2">
-                            {activeWorkflowDetail.outputs.map((item) => (
-                              <div
-                                key={item}
-                                className="text-sm font-medium text-[#31475f]"
-                              >
-                                {item}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {activeWorkflowGuide.map((item) => (
-                          <div
-                            key={item}
-                            className="rounded-full border border-[#dbe4ef] bg-white px-3 py-1.5 text-xs font-medium text-[#31475f]"
-                          >
-                            {item}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
+          <section className="min-h-0 overflow-y-auto px-5 py-6 lg:px-8">
+            <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col gap-5">
+              <section className="rounded-[26px] border border-[#dfe8f4] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] px-4 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] sm:px-5 sm:py-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ef] bg-[#f8fbff] px-3 py-1.5 text-[12px] font-semibold text-[#52657d]">
+                    <span className="size-2 rounded-full bg-[#2563eb]" />
+                    {copy.heroTitle}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#52657d] shadow-sm">
+                      <GitBranchIcon className="size-3.5 text-[#2563eb]" />
+                      {activeProject.name}
+                    </span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#52657d] shadow-sm">
+                      <WorkflowIcon className="size-3.5 text-[#2563eb]" />
+                      {thread.isLoading ? copy.agentRunning : copy.agentIdle}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                  {capabilityCards.map((domain, index) => (
-                    <button
-                      key={domain.label}
-                      type="button"
-                      onClick={() => {
-                        setActiveWorkflowIndex(index === 2 ? 5 : 4);
-                        domain.onSelect();
-                      }}
-                      className="rounded-[22px] border border-[#e7edf5] bg-[#fbfdff] px-4 py-4 text-left transition hover:border-[#c8d9eb] hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)]"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-[#142033]">
-                          <span
-                            className={cn(
-                              "size-2.5 rounded-full",
-                              index === 0 && "bg-[#38bdf8]",
-                              index === 1 && "bg-[#8b5cf6]",
-                              index === 2 && "bg-[#f59e0b]",
-                            )}
-                          />
-                          {domain.label}
-                        </div>
-                        <span className="rounded-full border border-[#dbe4ef] bg-white px-2.5 py-0.5 text-[10px] font-medium text-[#60748b]">
-                          {domain.metric}
-                        </span>
-                      </div>
-                      <div className="mt-2 text-xs leading-6 text-[#6d7f97]">
-                        {domain.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-[760px] flex-1">
-              <section className="grid h-full min-h-[760px] grid-rows-[minmax(240px,0.78fr)_minmax(430px,1.22fr)] overflow-hidden rounded-[28px] border border-[#dbe4ef] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-                <div className="flex min-h-0 flex-col">
-                  <div className="flex items-center justify-between gap-3 border-b border-[#e7edf5] px-5 py-4">
-                    <div className="text-sm font-semibold text-[#142033]">
-                      {isChinese ? "当前线程" : "Current thread"}
+                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
+                  <div className="min-w-0">
+                    <div className="mb-3">
+                      <h1 className="text-[26px] leading-tight font-semibold text-[#141922] sm:text-[32px]">
+                        {isChinese ? "开始任务" : "Start a task"}
+                      </h1>
+                      <p className="mt-2 text-sm leading-6 text-[#66758a]">
+                        {isChinese
+                          ? "描述目标、贴上上下文，DeerFlow 会在当前线程里推进；需要拆分时再新建线程或切换 Ultra。"
+                          : "Describe the goal and context. DeerFlow will continue in this thread; split work into threads or use Ultra when needed."}
+                      </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-[#60748b]">
-                      <span className="rounded-full border border-[#dbe4ef] bg-[#f8fbff] px-3 py-1">
-                        {thread.isLoading ? copy.agentRunning : copy.agentIdle}
-                      </span>
-                      {currentExecutionStage ? (
-                        <span className="rounded-full border border-[#dbe4ef] bg-[#f8fbff] px-3 py-1">
-                          {currentExecutionStage.stage}
-                        </span>
-                      ) : null}
+
+                    <div className="rounded-[24px] border border-[#d8dee8] bg-[#f7f8fa] p-2 shadow-[0_16px_46px_rgba(15,23,42,0.07)]">
+                      <InputBox
+                        key={`${threadId}-${composerSeed}`}
+                        appearance="default"
+                        className="h-[180px] w-full [&_[data-slot='input-group']]:h-full [&_[data-slot='input-group']]:min-h-[180px] [&_[data-slot='input-group-control']]:min-h-[92px]"
+                        autoFocus
+                        status={thread.isLoading ? "streaming" : "ready"}
+                        context={settings.context}
+                        disabled={
+                          env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
+                        }
+                        initialValue={prefillPrompt}
+                        onDraftChange={handleComposerDraftChange}
+                        onDraftKeyDown={handleComposerKeyDown}
+                        showInlineSuggestions={false}
+                        onContextChange={(context) =>
+                          setSettings("context", context)
+                        }
+                        onSubmit={guardedHandleSubmit}
+                        onStop={handleStopAgent}
+                      />
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        {
+                          icon: GitBranchIcon,
+                          text: isChinese
+                            ? "检查最近改动的风险"
+                            : "Review recent changes",
+                          workflow: 0,
+                        },
+                        {
+                          icon: FolderIcon,
+                          text: isChinese
+                            ? "拆分项目推进线程"
+                            : "Split project threads",
+                          workflow: 0,
+                        },
+                        {
+                          icon: Layers3Icon,
+                          text: isChinese
+                            ? "整理可复用能力"
+                            : "Package reusable capabilities",
+                          workflow: 4,
+                        },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.text}
+                            type="button"
+                            onClick={() => {
+                              setActiveWorkflowIndex(item.workflow);
+                              queuePrompt(item.text);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ef] bg-white px-3 py-2 text-sm font-semibold text-[#60748b] shadow-sm transition hover:border-[#b8c7da] hover:text-[#263447]"
+                          >
+                            <Icon className="size-4 text-[#8a98aa]" />
+                            {item.text}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <ScrollArea className="min-h-0 flex-1">
-                    <div className="space-y-4 px-5 py-5">
-                      {sessionStreamItems.length === 0 ? (
-                        <div className="rounded-[22px] border border-dashed border-[#dbe4ef] bg-[#f8fbff] px-4 py-5 text-sm leading-7 text-[#6d7f97]">
-                          {isChinese
-                            ? "选择工作流，或直接输入任务。"
-                            : "Choose a workflow, or type a task."}
-                        </div>
-                      ) : (
-                        sessionStreamItems.slice(-18).map((item) => (
-                          <div
-                            key={item.id}
-                            className="grid grid-cols-[92px_minmax(0,1fr)] gap-4 rounded-[22px] border border-[#e7edf5] bg-[#fbfdff] px-4 py-4"
-                          >
-                            <div className="pt-0.5">
-                              <div
-                                className={cn(
-                                  "inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] uppercase",
-                                  item.kind === "user" &&
-                                    "border-[#bfd4f1] bg-[#eef5ff] text-[#2d5d97]",
-                                  item.kind === "assistant" &&
-                                    "border-[#d7dee8] bg-white text-[#40556f]",
-                                  item.kind === "reasoning" &&
-                                    "border-[#dac7f6] bg-[#f6f0ff] text-[#7054b6]",
-                                  item.kind === "tool_use" &&
-                                    "border-[#f6d5b1] bg-[#fff7ed] text-[#b05d11]",
-                                  item.kind === "tool_result" &&
-                                    "border-[#c5e7d0] bg-[#f2fbf5] text-[#1d7a3c]",
-                                  item.kind === "runtime" &&
-                                    "border-[#d7dee8] bg-white text-[#5c7088]",
-                                  item.kind === "policy" &&
-                                    "border-[#f4c7c7] bg-[#fff4f4] text-[#b04343]",
-                                )}
-                              >
-                                {item.label}
-                              </div>
-                              {item.meta ? (
-                                <div className="mt-2 text-[10px] leading-5 text-[#8ca0b6]">
-                                  {item.meta}
-                                </div>
-                              ) : null}
-                            </div>
-                            <pre className="min-w-0 font-mono text-[13px] leading-7 break-words whitespace-pre-wrap text-[#17324d]">
-                              {item.body}
-                            </pre>
-                          </div>
-                        ))
-                      )}
+                  <div className="grid content-start gap-4 rounded-[24px] border border-[#d4e1f0] bg-[linear-gradient(180deg,#f7fbff_0%,#edf5ff_100%)] p-4 shadow-[0_16px_38px_rgba(31,59,102,0.08)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-[#142033]">
+                        <SettingsIcon className="size-4 text-[#2563eb]" />
+                        {isChinese ? "本次运行设置" : "Run settings"}
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#cfe0f4] bg-white/78 px-2.5 py-1 text-[11px] font-semibold text-[#52657d]">
+                        <BotIcon className="size-3.5 text-[#2563eb]" />
+                        {isChinese ? "Agent 配置" : "Agent setup"}
+                      </span>
                     </div>
-                  </ScrollArea>
+                    <div className="grid gap-2.5">
+                      <label
+                        className="sr-only"
+                        htmlFor="workflow-model-select"
+                      >
+                        {copy.modelLabel}
+                      </label>
+                      <select
+                        id="workflow-model-select"
+                        value={selectedModel?.name ?? ""}
+                        onChange={(event) =>
+                          handleStudioModelChange(event.target.value)
+                        }
+                        className="h-11 rounded-[16px] border border-[#cfddec] bg-white px-3 text-sm font-semibold text-[#263447] shadow-[0_8px_18px_rgba(31,59,102,0.07)] transition outline-none hover:border-[#b8c7da] focus:border-[#2563eb]"
+                      >
+                        {models.map((model) => (
+                          <option key={model.name} value={model.name}>
+                            {model.display_name ?? model.name}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="sr-only" htmlFor="workflow-mode-select">
+                        {isChinese ? "模式" : "Mode"}
+                      </label>
+                      <select
+                        id="workflow-mode-select"
+                        value={safeSelectedMode}
+                        onChange={(event) =>
+                          handleStudioModeChange(
+                            event.target.value as StudioMode,
+                          )
+                        }
+                        className="h-11 rounded-[16px] border border-[#cfddec] bg-white px-3 text-sm font-semibold text-[#263447] shadow-[0_8px_18px_rgba(31,59,102,0.07)] transition outline-none hover:border-[#b8c7da] focus:border-[#2563eb]"
+                      >
+                        {availableStudioModes.map((mode) => (
+                          <option key={mode} value={mode}>
+                            {getModeLabel(mode, isChinese)}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex h-11 items-center justify-between gap-2 rounded-[16px] border border-[#cfddec] bg-white px-3 text-sm font-semibold text-[#263447] shadow-[0_8px_18px_rgba(31,59,102,0.07)]">
+                        <span className="inline-flex items-center gap-2 text-[#60748b]">
+                          <BotIcon className="size-4 text-[#2563eb]" />
+                          {isChinese ? "上下文" : "Context"}
+                        </span>
+                        <span className="truncate text-[#142033]">
+                          {compactStateLabel}
+                        </span>
+                      </div>
+                      <label className="flex h-11 items-center justify-between gap-2 rounded-[16px] border border-[#cfddec] bg-white px-3 text-sm font-semibold text-[#263447] shadow-[0_8px_18px_rgba(31,59,102,0.07)]">
+                        <span className="inline-flex items-center gap-2">
+                          <SearchIcon className="size-4 text-[#2563eb]" />
+                          {isChinese ? "联网搜索" : "Web search"}
+                        </span>
+                        <Switch
+                          checked={
+                            settings.context.web_search_enabled !== false
+                          }
+                          className="h-4 w-7 data-[state=checked]:bg-[#2563eb]"
+                          onCheckedChange={handleStudioWebSearchChange}
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div className="rounded-[16px] border border-white/70 bg-white/74 px-3 py-3 text-[#60748b] shadow-[0_8px_18px_rgba(31,59,102,0.05)]">
+                        <div>{isChinese ? "线程" : "Threads"}</div>
+                        <div className="mt-1 text-lg font-semibold text-[#142033]">
+                          {activeProjectCard?.threads.length ?? 0}
+                        </div>
+                      </div>
+                      <div className="rounded-[16px] border border-white/70 bg-white/74 px-3 py-3 text-[#60748b] shadow-[0_8px_18px_rgba(31,59,102,0.05)]">
+                        <div>{isChinese ? "Agent" : "Agents"}</div>
+                        <div className="mt-1 text-lg font-semibold text-[#142033]">
+                          {safeSelectedMode === "ultra" ? "3" : "1"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              </section>
 
+              <section className="grid gap-3 lg:grid-cols-4">
+                {[
+                  {
+                    icon: MessageSquareIcon,
+                    label: isChinese ? "当前线程" : "Thread",
+                    value: thread.isLoading
+                      ? copy.agentRunning
+                      : copy.agentIdle,
+                  },
+                  {
+                    icon: GitBranchIcon,
+                    label: isChinese ? "项目线程" : "Project threads",
+                    value: `${activeProjectCard?.threads.length ?? 0}`,
+                  },
+                  {
+                    icon: BotIcon,
+                    label: isChinese ? "Agent 并发" : "Agent lanes",
+                    value: safeSelectedMode === "ultra" ? "3" : "1",
+                  },
+                  {
+                    icon: CheckCircleIcon,
+                    label: isChinese ? "运行记录" : "Runs",
+                    value: `${workflowStats?.run_count ?? workflowRuns.length}`,
+                  },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.label}
+                      className="flex items-center gap-3 rounded-[20px] border border-[#e1e7ef] bg-white px-4 py-3 shadow-[0_10px_32px_rgba(15,23,42,0.04)]"
+                    >
+                      <span className="grid size-9 shrink-0 place-items-center rounded-[14px] bg-[#eef5ff] text-[#2563eb]">
+                        <Icon className="size-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs text-[#7a8798]">
+                          {item.label}
+                        </div>
+                        <div className="mt-0.5 truncate text-sm font-semibold text-[#142033]">
+                          {item.value}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+
+              <section className="min-h-[560px] overflow-hidden rounded-[28px] border border-[#e1e7ef] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
                 <Tabs
                   value={
                     rightPaneMode === "workspace" ? "workspace" : bottomTab
@@ -3968,9 +4439,9 @@ function VibeCodingWorkbench() {
                     }
                     openInspectorTab(value as ConsoleTab);
                   }}
-                  className="flex min-h-0 flex-col border-t border-[#e7edf5]"
+                  className="flex h-full min-h-[560px] flex-col"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7edf5] px-5 py-4">
                     <div className="text-sm font-semibold text-[#142033]">
                       {isChinese ? "产出" : "Output"}
                     </div>
@@ -4007,159 +4478,135 @@ function VibeCodingWorkbench() {
                     className="m-0 min-h-0 flex-1 overflow-hidden p-4"
                   >
                     <ScrollArea className="h-full min-h-0">
-                      <div className="grid gap-4 pb-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)]">
-                        <section className="min-h-[220px] rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] px-4 py-4">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
+                        <section className="rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] p-4">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-[#142033]">
-                              {copy.runtimeTitle}
+                              {copy.sessionTitle}
                             </div>
                             <Badge
                               variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#6d7f97]"
+                              className="rounded-full bg-white"
                             >
-                              {runtimeEvents.length}
+                              {messages.length}
                             </Badge>
                           </div>
-                          {runtimeEvents.length === 0 ? (
-                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-5 text-sm text-[#6d7f97]">
-                              {copy.runtimeEmpty}
+                          {sessionStreamItems.length === 0 ? (
+                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-8 text-sm text-[#6d7f97]">
+                              {copy.waitingForOutput}
                             </div>
                           ) : (
-                            <div className="grid gap-2">
-                              {runtimeEvents.slice(0, 6).map((event) => (
+                            <div className="space-y-3">
+                              {sessionStreamItems.slice(-8).map((item) => (
                                 <div
-                                  key={event.id}
-                                  className={cn(
-                                    "rounded-[18px] border px-3 py-3",
-                                    event.tone === "running" &&
-                                      "border-[#dbeafe] bg-[#f3f8ff]",
-                                    event.tone === "success" &&
-                                      "border-[#cfe4d5] bg-[#f6fbf7]",
-                                    event.tone === "error" &&
-                                      "border-[#f1d5d5] bg-[#fff6f6]",
-                                    event.tone === "info" &&
-                                      "border-[#e7edf5] bg-white",
-                                  )}
+                                  key={item.id}
+                                  className="rounded-[18px] border border-[#e7edf5] bg-white px-4 py-3"
                                 >
-                                  <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                                    {event.title}
+                                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold tracking-[0.16em] text-[#8a98aa] uppercase">
+                                    <span>{item.label}</span>
+                                    {item.meta ? (
+                                      <span className="tracking-normal">
+                                        {item.meta}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                  <div className="mt-1 text-sm leading-6 text-[#31475f]">
-                                    {event.detail}
-                                  </div>
+                                  <pre className="font-mono text-[13px] leading-6 break-words whitespace-pre-wrap text-[#17324d]">
+                                    {item.body}
+                                  </pre>
                                 </div>
                               ))}
                             </div>
                           )}
                         </section>
 
-                        <section className="min-h-[220px] rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] px-4 py-4">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-[#142033]">
-                              {copy.checkpointsTitle}
+                        <section className="grid gap-4">
+                          <div className="rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-[#142033]">
+                                {copy.runtimeTitle}
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className="rounded-full bg-white"
+                              >
+                                {runtimeEvents.length}
+                              </Badge>
                             </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                              onClick={() => void handleSaveCheckpoint()}
-                            >
-                              {copy.checkpointSave}
-                            </Button>
-                          </div>
-                          {checkpoints.length === 0 ? (
-                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-5 text-sm text-[#6d7f97]">
-                              {copy.checkpointEmpty}
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {checkpoints.slice(0, 4).map((checkpoint) => (
-                                <button
-                                  key={checkpoint.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedCheckpointId(checkpoint.id);
-                                    openInspectorTab("changes");
-                                  }}
-                                  className={cn(
-                                    "w-full rounded-[18px] border px-3 py-3 text-left transition",
-                                    checkpoint.id === selectedCheckpointId
-                                      ? "border-[#9bc2ff] bg-[#edf5ff]"
-                                      : "border-[#e7edf5] bg-white hover:border-[#c8d9eb] hover:bg-[#fafdff]",
-                                  )}
-                                >
-                                  <div className="text-sm font-semibold text-[#142033]">
-                                    {checkpoint.label}
-                                  </div>
-                                  <div className="mt-1 text-xs text-[#7a8da4]">
-                                    {checkpointTimeFormatter.format(
-                                      new Date(checkpoint.createdAt),
-                                    )}
-                                  </div>
-                                  {checkpoint.summary ? (
-                                    <div className="mt-2 text-sm leading-6 text-[#51657d]">
-                                      {checkpoint.summary}
-                                    </div>
-                                  ) : null}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </section>
-
-                        <section className="rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] px-4 py-4 xl:col-span-2">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-[#142033]">
-                              {copy.tasksTitle}
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#6d7f97]"
-                            >
-                              {todos.length}
-                            </Badge>
-                          </div>
-                          {todos.length === 0 ? (
-                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-5 text-sm text-[#6d7f97]">
-                              {copy.taskEmpty}
-                            </div>
-                          ) : (
-                            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                              {todos.map((todo, index) => {
-                                const completed = todo.status === "completed";
-                                return (
+                            {runtimeEvents.length === 0 ? (
+                              <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-5 text-sm text-[#6d7f97]">
+                                {copy.runtimeEmpty}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {runtimeEvents.slice(0, 5).map((event) => (
                                   <div
-                                    key={`${todo.content}-${index}`}
-                                    className="rounded-[18px] border border-[#e7edf5] bg-white px-3 py-3"
+                                    key={event.id}
+                                    className="rounded-[16px] border border-[#e7edf5] bg-white px-3 py-3"
                                   >
-                                    <div className="flex items-start gap-3">
-                                      <CheckCircleIcon
-                                        className={cn(
-                                          "mt-0.5 size-4 shrink-0",
-                                          completed
-                                            ? "text-emerald-500"
-                                            : todo.status === "in_progress"
-                                              ? "text-amber-500"
-                                              : "text-[#8ba0b5]",
-                                        )}
-                                      />
-                                      <div
-                                        className={cn(
-                                          "text-sm leading-6",
-                                          completed
-                                            ? "text-[#8ba0b5] line-through"
-                                            : "text-[#31475f]",
-                                        )}
-                                      >
-                                        {todo.content}
-                                      </div>
+                                    <div className="text-xs font-semibold text-[#142033]">
+                                      {event.title}
+                                    </div>
+                                    <div className="mt-1 text-xs leading-5 text-[#60748b]">
+                                      {event.detail}
                                     </div>
                                   </div>
-                                );
-                              })}
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                            <div className="rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] p-4">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold text-[#142033]">
+                                  {copy.checkpointsTitle}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full bg-white"
+                                  onClick={() => void handleSaveCheckpoint()}
+                                >
+                                  {copy.checkpointSave}
+                                </Button>
+                              </div>
+                              <div className="text-sm text-[#6d7f97]">
+                                {checkpoints.length === 0
+                                  ? copy.checkpointEmpty
+                                  : `${checkpoints.length} ${copy.checkpointFiles}`}
+                              </div>
                             </div>
-                          )}
+                            <div className="rounded-[24px] border border-[#e7edf5] bg-[#fbfdff] p-4">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold text-[#142033]">
+                                  {copy.tasksTitle}
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full bg-white"
+                                >
+                                  {todos.length}
+                                </Badge>
+                              </div>
+                              {todos.length === 0 ? (
+                                <div className="text-sm text-[#6d7f97]">
+                                  {copy.taskEmpty}
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {todos.slice(0, 5).map((todo, index) => (
+                                    <div
+                                      key={`${todo.content}-${index}`}
+                                      className="rounded-[14px] bg-white px-3 py-2 text-sm text-[#31475f]"
+                                    >
+                                      {todo.content}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </section>
                       </div>
                     </ScrollArea>
@@ -4169,7 +4616,7 @@ function VibeCodingWorkbench() {
                     value="preview"
                     className="m-0 min-h-0 flex-1 overflow-hidden p-4"
                   >
-                    <div className="h-full min-h-[360px] overflow-hidden rounded-[22px] border border-[#e7edf5] bg-white">
+                    <div className="h-full min-h-[430px] overflow-hidden rounded-[22px] border border-[#e7edf5] bg-white">
                       <VibeErrorBoundary
                         title="Preview unavailable"
                         description="The preview surface hit an unexpected state. Retry will remount this preview panel."
@@ -4195,154 +4642,101 @@ function VibeCodingWorkbench() {
 
                   <TabsContent
                     value="changes"
-                    className="m-0 min-h-0 flex-1 p-4"
+                    className="m-0 min-h-0 flex-1 overflow-hidden p-4"
                   >
-                    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[22px] border border-[#e7edf5] bg-white">
-                      <VibeErrorBoundary
-                        title="Changes unavailable"
-                        description="The diff surface ran into an unexpected state. Retry will remount just this review panel."
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7edf5] px-4 py-4">
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-[#142033]">
-                              {copy.changesTab}
-                            </div>
-                            <div className="mt-1 text-xs text-[#6d7f97]">
-                              {selectedDiff?.hasChanges
-                                ? copy.changesReady
-                                : copy.changesHint}
-                            </div>
+                    <div className="flex h-full min-h-[430px] flex-col overflow-hidden rounded-[22px] border border-[#e7edf5] bg-white">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7edf5] px-4 py-4">
+                        <div>
+                          <div className="text-sm font-semibold text-[#142033]">
+                            {copy.changesTab}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {selectedDiff?.hasChanges ? (
-                              <Badge
-                                variant="outline"
-                                className="rounded-full border-[#d8e2ee] bg-[#f7fbff] text-[#6d7f97]"
-                              >
-                                +{selectedDiff.additions} / -
-                                {selectedDiff.deletions}
-                              </Badge>
-                            ) : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                              onClick={() => void handleSaveCheckpoint()}
-                            >
-                              {copy.checkpointSave}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                              disabled={
-                                !selectedCheckpoint ||
-                                !selectedArtifactMeta?.normalizedPath ||
-                                selectedCheckpointContent === undefined ||
-                                thread.isLoading
-                              }
-                              onClick={() => void handleRestoreCheckpointFile()}
-                            >
-                              {copy.checkpointRestoreFile}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                              disabled={
-                                !selectedCheckpoint ||
-                                selectedCheckpoint.omittedCount > 0 ||
-                                thread.isLoading
-                              }
-                              onClick={() =>
-                                void handleRestoreCheckpointRound()
-                              }
-                            >
-                              {copy.checkpointRestoreRound}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                              disabled={!selectedDiff?.hasChanges}
-                              onClick={handleCopyPatch}
-                            >
-                              <CopyIcon className="size-4" />
-                              {copy.copyPatch}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="rounded-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                              disabled={
-                                !selectedDiff?.hasChanges || thread.isLoading
-                              }
-                              onClick={handleApplyReviewedChange}
-                            >
-                              <CheckCircleIcon className="size-4" />
-                              {copy.applyAction}
-                            </Button>
+                          <div className="mt-1 text-xs text-[#6d7f97]">
+                            {selectedDiff?.hasChanges
+                              ? copy.changesReady
+                              : copy.changesHint}
                           </div>
                         </div>
-                        <ScrollArea className="min-h-0 flex-1">
-                          {!selectedArtifact ? (
-                            <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
-                              {copy.waitingForOutput}
-                            </div>
-                          ) : selectedArtifactLoading ? (
-                            <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
-                              {copy.previewLoading}
-                            </div>
-                          ) : !selectedArtifactMeta?.isCodeFile ? (
-                            <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
-                              {copy.noPreview}
-                            </div>
-                          ) : selectedCheckpointMissingFile ? (
-                            <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
-                              {copy.checkpointMissingFile}
-                            </div>
-                          ) : selectedDiff?.hasChanges ? (
-                            <div className="font-mono text-xs">
-                              {selectedDiff.diffLines.map((line, index) => (
-                                <div
-                                  key={`${line.kind}-${line.oldLineNumber}-${line.newLineNumber}-${index}`}
-                                  className={cn(
-                                    "grid grid-cols-[52px_52px_minmax(0,1fr)] gap-3 px-4 py-1.5",
-                                    line.kind === "add" &&
-                                      "bg-[#f4fbf5] text-[#1e6b2f]",
-                                    line.kind === "remove" &&
-                                      "bg-[#fff5f5] text-[#9b3f3f]",
-                                    line.kind === "context" && "text-[#53453a]",
-                                  )}
-                                >
-                                  <span className="text-right text-[#9eb1c6]">
-                                    {line.oldLineNumber ?? ""}
-                                  </span>
-                                  <span className="text-right text-[#9eb1c6]">
-                                    {line.newLineNumber ?? ""}
-                                  </span>
-                                  <span className="break-all whitespace-pre-wrap">
-                                    {line.kind === "add"
-                                      ? "+"
-                                      : line.kind === "remove"
-                                        ? "-"
-                                        : " "}
-                                    {line.text || " "}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
-                              {copy.diffEmpty}
-                            </div>
-                          )}
-                        </ScrollArea>
-                      </VibeErrorBoundary>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full bg-white"
+                            onClick={() => void handleSaveCheckpoint()}
+                          >
+                            {copy.checkpointSave}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full bg-white"
+                            disabled={!selectedDiff?.hasChanges}
+                            onClick={handleCopyPatch}
+                          >
+                            <CopyIcon className="size-4" />
+                            {copy.copyPatch}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="rounded-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+                            disabled={
+                              !selectedDiff?.hasChanges || thread.isLoading
+                            }
+                            onClick={handleApplyReviewedChange}
+                          >
+                            <CheckCircleIcon className="size-4" />
+                            {copy.applyAction}
+                          </Button>
+                        </div>
+                      </div>
+                      <ScrollArea className="min-h-0 flex-1">
+                        {!selectedArtifact ? (
+                          <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
+                            {copy.waitingForOutput}
+                          </div>
+                        ) : selectedArtifactLoading ? (
+                          <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
+                            {copy.previewLoading}
+                          </div>
+                        ) : selectedDiff?.hasChanges ? (
+                          <div className="font-mono text-xs">
+                            {selectedDiff.diffLines.map((line, index) => (
+                              <div
+                                key={`${line.kind}-${line.oldLineNumber}-${line.newLineNumber}-${index}`}
+                                className={cn(
+                                  "grid grid-cols-[52px_52px_minmax(0,1fr)] gap-3 px-4 py-1.5",
+                                  line.kind === "add" &&
+                                    "bg-[#f4fbf5] text-[#1e6b2f]",
+                                  line.kind === "remove" &&
+                                    "bg-[#fff5f5] text-[#9b3f3f]",
+                                  line.kind === "context" && "text-[#53453a]",
+                                )}
+                              >
+                                <span className="text-right text-[#9eb1c6]">
+                                  {line.oldLineNumber ?? ""}
+                                </span>
+                                <span className="text-right text-[#9eb1c6]">
+                                  {line.newLineNumber ?? ""}
+                                </span>
+                                <span className="break-all whitespace-pre-wrap">
+                                  {line.kind === "add"
+                                    ? "+"
+                                    : line.kind === "remove"
+                                      ? "-"
+                                      : " "}
+                                  {line.text || " "}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex h-[320px] items-center justify-center px-6 text-center text-sm text-[#6d7f97]">
+                            {copy.diffEmpty}
+                          </div>
+                        )}
+                      </ScrollArea>
                     </div>
                   </TabsContent>
 
@@ -4375,347 +4769,6 @@ function VibeCodingWorkbench() {
               </section>
             </div>
           </section>
-
-          <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1 pb-2">
-            <section className="shrink-0 rounded-[30px] border border-[#cfe0f5] bg-white px-5 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.07)]">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold text-[#142033]">
-                    {isChinese ? "启动工作流" : "Launch workflow"}
-                  </div>
-                  <div className="mt-1 text-xs text-[#6d7f97]">
-                    {activeWorkflow
-                      ? activeWorkflow.label
-                      : copy.commandPlaceholder}
-                  </div>
-                </div>
-                {activeWorkflow ? (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="rounded-full border-[#d8e2ee] bg-[#f7fbff] text-[#142033] hover:bg-white"
-                      onClick={() => queuePrompt(activeWorkflow.prompt)}
-                    >
-                      {isChinese ? "填入" : "Fill"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="rounded-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                      disabled={thread.isLoading || createWorkflowRun.isPending}
-                      onClick={() =>
-                        void startWorkflowRun(
-                          activeWorkflow,
-                          activeWorkflowIndex,
-                          composerDraft || undefined,
-                        )
-                      }
-                    >
-                      {isChinese ? "运行" : "Run"}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-
-              {activeWorkflow && activeWorkflowDetail ? (
-                <div className="mb-4 rounded-[26px] border border-[#dbeafe] bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_100%)] p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="grid size-11 shrink-0 place-items-center rounded-[18px] bg-[#2563eb] text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)]">
-                      <ActiveWorkflowIcon className="size-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-base font-semibold tracking-[-0.02em] text-[#142033]">
-                        {activeWorkflow.label}
-                      </div>
-                      <div className="mt-1 text-sm leading-6 text-[#60748b]">
-                        {activeWorkflowDetail.purpose}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {activeWorkflowDetail.outputs.map((item) => (
-                      <span
-                        key={item}
-                        className="rounded-full border border-[#dbe4ef] bg-white px-3 py-1.5 text-xs font-medium text-[#51657d]"
-                      >
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <InputBox
-                key={`${threadId}-${composerSeed}`}
-                appearance="default"
-                className="h-[320px] w-full [&_[data-slot='input-group']]:h-full [&_[data-slot='input-group']]:min-h-[320px] [&_[data-slot='input-group-control']]:min-h-[230px]"
-                autoFocus
-                status={thread.isLoading ? "streaming" : "ready"}
-                context={settings.context}
-                disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-                initialValue={prefillPrompt}
-                onDraftChange={handleComposerDraftChange}
-                onDraftKeyDown={handleComposerKeyDown}
-                showInlineSuggestions={false}
-                onContextChange={(context) => setSettings("context", context)}
-                onSubmit={guardedHandleSubmit}
-                onStop={handleStopAgent}
-              />
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#6d7f97]">
-                <span>{copy.composerHint}</span>
-                <span>
-                  {isChinese
-                    ? "Enter 发送 / Shift Enter 换行"
-                    : "Enter to send / Shift Enter for newline"}
-                </span>
-              </div>
-            </section>
-
-            <section className="shrink-0 rounded-[30px] border border-[#dbe4ef] bg-[linear-gradient(135deg,#f0f6ff_0%,#ffffff_100%)] px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-[#142033]">
-                  {isChinese ? "工作区状态" : "Workspace"}
-                </div>
-                {currentExecutionStage ? (
-                  <span className="rounded-full border border-[#d9e3ef] bg-white px-3 py-1 text-[11px] font-medium text-[#51657d]">
-                    {currentExecutionStage.stage}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                <div className="rounded-[20px] border border-[#dbe4ef] bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                    {isChinese ? "项目" : "Project"}
-                  </div>
-                  <div className="mt-2 truncate text-sm text-[#142033]">
-                    {workspacePath}
-                  </div>
-                </div>
-                <div className="rounded-[20px] border border-[#dbe4ef] bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                    {isChinese ? "焦点" : "Focus"}
-                  </div>
-                  <div className="mt-2 truncate text-sm text-[#142033]">
-                    {focusLabel}
-                  </div>
-                </div>
-                <div className="rounded-[20px] border border-[#dbe4ef] bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                    {isChinese ? "确认" : "Approval"}
-                  </div>
-                  <div className="mt-2 text-sm text-[#142033]">
-                    {approvalModeLabel}
-                  </div>
-                </div>
-                <div className="rounded-[20px] border border-[#dbe4ef] bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-[#7a8da4] uppercase">
-                    {isChinese ? "运行" : "Runtime"}
-                  </div>
-                  <div className="mt-2 text-sm text-[#142033]">
-                    {terminalStatusLabel}
-                  </div>
-                </div>
-              </div>
-
-              {activePersistedWorkflowRun ? (
-                <div className="mt-4 rounded-[22px] border border-[#dbeafe] bg-white px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold tracking-[0.18em] text-[#2563eb] uppercase">
-                        {isChinese ? "当前工作流" : "Current workflow"}
-                      </div>
-                      <div className="mt-1 truncate text-sm font-semibold text-[#142033]">
-                        {activePersistedWorkflowRun.title}
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-[11px] font-medium",
-                        activePersistedWorkflowRun.status === "completed" &&
-                          "border-emerald-200 bg-emerald-50 text-emerald-700",
-                        activePersistedWorkflowRun.status === "failed" &&
-                          "border-red-200 bg-red-50 text-red-700",
-                        ["queued", "running", "waiting_approval"].includes(
-                          activePersistedWorkflowRun.status,
-                        ) && "border-blue-200 bg-blue-50 text-blue-700",
-                      )}
-                    >
-                      {formatWorkflowStatusLabel(
-                        activePersistedWorkflowRun.status,
-                        isChinese,
-                      )}
-                    </span>
-                  </div>
-                  {activePersistedWorkflowRun.steps.length > 0 ? (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      {activePersistedWorkflowRun.steps
-                        .slice(0, 3)
-                        .map((step, index) => (
-                          <div
-                            key={step.id}
-                            className="rounded-[16px] border border-[#e7edf5] bg-[#f8fbff] px-3 py-3"
-                          >
-                            <div className="text-[11px] font-semibold text-[#8aa0b6]">
-                              {index + 1}
-                            </div>
-                            <div className="mt-1 truncate text-xs font-medium text-[#31475f]">
-                              {step.label}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="min-h-[320px] shrink-0 overflow-hidden rounded-[30px] border border-[#dbe4ef] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-              <ScrollArea className="h-[320px]">
-                <div className="space-y-4 px-5 py-5">
-                  {pendingCommandApproval ? (
-                    <div className="rounded-[22px] border border-[#f2c6c6] bg-[#fff6f6] px-4 py-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-semibold tracking-[0.18em] text-[#b04343] uppercase">
-                            {isChinese ? "待确认操作" : "pending approval"}
-                          </div>
-                          <div className="mt-2 text-sm font-medium text-[#142033]">
-                            {pendingCommandApproval.label ??
-                              pendingCommandApproval.command}
-                          </div>
-                          <p className="mt-2 text-xs leading-6 text-[#7e5b5b]">
-                            {pendingCommandApproval.reason}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="rounded-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                            onClick={() => void handleApprovePendingCommand()}
-                          >
-                            {isChinese ? "批准" : "Approve"}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full border-[#d8e2ee] bg-white text-[#142033] hover:bg-[#f7fbff]"
-                            onClick={handleRejectPendingCommand}
-                          >
-                            {isChinese ? "取消" : "Cancel"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="rounded-[22px] border border-[#dbe4ef] bg-[#fbfdff] px-4 py-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-[#142033]">
-                        {copy.runtimeTitle}
-                      </div>
-                      <span className="rounded-full border border-[#d8e2ee] bg-white px-3 py-1 text-[11px] font-medium text-[#60748b]">
-                        {executionLaneItems.length}
-                      </span>
-                    </div>
-                    {executionLaneItems.length === 0 ? (
-                      <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-7 text-sm leading-6 text-[#6d7f97]">
-                        {isChinese
-                          ? "运行、工具调用和审批会显示在这里。"
-                          : "Runs, tool calls, and approvals will appear here."}
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {executionLaneItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              "rounded-[18px] border px-3 py-3",
-                              item.kind === "policy" &&
-                                "border-[#f2c6c6] bg-[#fff6f6]",
-                              item.kind === "tool_result" &&
-                                "border-[#cfe4d5] bg-[#f6fbf7]",
-                              (item.kind === "runtime" ||
-                                item.kind === "tool_use") &&
-                                "border-[#dbeafe] bg-[#f3f8ff]",
-                            )}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-sm font-medium text-[#142033]">
-                                {item.stage}
-                              </div>
-                              <span className="text-[11px] text-[#7a8da4]">
-                                {item.meta}
-                              </span>
-                            </div>
-                            <div className="mt-2 text-sm leading-6 text-[#51657d]">
-                              {item.body}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-[22px] border border-[#dbe4ef] bg-[#fbfdff] px-4 py-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-[#142033]">
-                        {copy.tasksTitle}
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="rounded-full border-[#d8e2ee] bg-white text-[#6d7f97]"
-                      >
-                        {todos.length}
-                      </Badge>
-                    </div>
-                    {todos.length === 0 ? (
-                      <div className="grid gap-2">
-                        {(activeWorkflowDetail?.abilities ?? []).map(
-                          (item, index) => (
-                            <div
-                              key={item}
-                              className="flex items-center gap-3 rounded-[18px] border border-[#e7edf5] bg-white px-3 py-3"
-                            >
-                              <span
-                                className={cn(
-                                  "size-2.5 rounded-full",
-                                  index === 0 && "bg-[#2563eb]",
-                                  index === 1 && "bg-[#38bdf8]",
-                                  index === 2 && "bg-[#99f6e4]",
-                                )}
-                              />
-                              <span className="text-sm font-medium text-[#31475f]">
-                                {item}
-                              </span>
-                            </div>
-                          ),
-                        )}
-                        <div className="rounded-[18px] border border-dashed border-[#dbe4ef] bg-white px-4 py-4 text-sm text-[#6d7f97]">
-                          {copy.taskEmpty}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {todos.slice(0, 6).map((todo, index) => (
-                          <div
-                            key={`${todo.content}-${index}`}
-                            className="rounded-[18px] border border-[#e7edf5] bg-white px-3 py-3 text-sm leading-6 text-[#31475f]"
-                          >
-                            {todo.content}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ScrollArea>
-            </section>
-          </aside>
         </main>
 
         <VibeCommandPalette

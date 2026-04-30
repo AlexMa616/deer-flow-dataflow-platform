@@ -39,3 +39,11 @@ class ModelConfig(BaseModel):
         description="Extra settings to be passed to the model when thinking is enabled",
     )
     supports_vision: bool = Field(default_factory=lambda: False, description="Whether the model supports vision/image inputs")
+    supports_workflow_modes: bool = Field(
+        default_factory=lambda: False,
+        description="Whether the UI should expose workflow intensity modes even when provider-native thinking is disabled",
+    )
+    provider_thinking_mode: str = Field(
+        default_factory=lambda: "native",
+        description="How thinking_enabled should be applied. Use 'native' for provider thinking, 'workflow' for UI/workflow-only modes, or 'none' to ignore.",
+    )

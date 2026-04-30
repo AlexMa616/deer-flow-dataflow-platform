@@ -71,17 +71,22 @@ export const enUS: Translations = {
       "We're going to build a new skill step by step with `skill-creator`. To start, what do you want this skill to do?",
     addAttachments: "Add attachments",
     mode: "Mode",
-    flashMode: "Flash",
-    flashModeDescription: "Fast and efficient, but may not be accurate",
-    reasoningMode: "Reasoning",
+    flashMode: "Fast",
+    flashModeDescription:
+      "Faster response for simple questions and light tasks",
+    reasoningMode: "Thinking",
     reasoningModeDescription:
-      "Reasoning before action, balance between time and accuracy",
-    proMode: "Pro",
-    proModeDescription:
-      "Reasoning, planning and executing, get more accurate results, may take more time",
+      "Analyze before acting, useful for tasks that need steadier handling",
+    proMode: "Deep",
+    proModeDescription: "Adds planning and task tracking for multi-step work",
     ultraMode: "Ultra",
     ultraModeDescription:
-      "Pro mode with subagents to divide work; best for complex multi-step tasks",
+      "Stronger workflow with subagent collaboration for complex tasks",
+    webSearch: "Web",
+    webSearchOnDescription:
+      "Allow this thread to use web search and page reading tools",
+    webSearchOffDescription:
+      "Disable web search and page reading tools; use existing context only",
     searchModels: "Search models...",
     surpriseMe: "Surprise",
     surpriseMePrompt: "Surprise me",

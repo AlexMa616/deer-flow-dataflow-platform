@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-ruff-check
+        name: backend ruff check
+        entry: bash -lc 'cd backend && uv run ruff check .'
+        language: system
+        pass_filenames: false
+        types_or: [python]

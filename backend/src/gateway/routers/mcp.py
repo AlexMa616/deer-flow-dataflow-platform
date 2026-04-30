@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
+from src.config.extensions_config import ExtensionsConfig, McpToolInterceptorConfig, get_extensions_config, reload_extensions_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["mcp"])
@@ -31,6 +31,10 @@ class McpConfigResponse(BaseModel):
         default_factory=dict,
         description="Map of MCP server name to configuration",
     )
+    tool_interceptors: list[McpToolInterceptorConfig] | None = Field(
+        default=None,
+        description="Rules for allowing, denying, or decorating MCP tools",
+    )
 
 
 class McpConfigUpdateRequest(BaseModel):
@@ -39,6 +43,10 @@ class McpConfigUpdateRequest(BaseModel):
     mcp_servers: dict[str, McpServerConfigResponse] = Field(
         ...,
         description="Map of MCP server name to configuration",
+    )
+    tool_interceptors: list[McpToolInterceptorConfig] = Field(
+        default_factory=list,
+        description="Rules for allowing, denying, or decorating MCP tools",
     )
 
 
@@ -71,7 +79,10 @@ async def get_mcp_configuration() -> McpConfigResponse:
     """
     config = get_extensions_config()
 
-    return McpConfigResponse(mcp_servers={name: McpServerConfigResponse(**server.model_dump()) for name, server in config.mcp_servers.items()})
+    return McpConfigResponse(
+        mcp_servers={name: McpServerConfigResponse(**server.model_dump()) for name, server in config.mcp_servers.items()},
+        tool_interceptors=config.tool_interceptors,
+    )
 
 
 @router.put(
@@ -127,6 +138,14 @@ async def update_mcp_configuration(request: McpConfigUpdateRequest) -> McpConfig
         # Convert request to dict format for JSON serialization
         config_data = {
             "mcpServers": {name: server.model_dump() for name, server in request.mcp_servers.items()},
+            "toolInterceptors": [
+                interceptor.model_dump(by_alias=True)
+                for interceptor in (
+                    request.tool_interceptors
+                    if request.tool_interceptors is not None
+                    else current_config.tool_interceptors
+                )
+            ],
             "skills": {name: {"enabled": skill.enabled} for name, skill in current_config.skills.items()},
         }
 
@@ -141,7 +160,10 @@ async def update_mcp_configuration(request: McpConfigUpdateRequest) -> McpConfig
 
         # Reload the configuration and update the global cache
         reloaded_config = reload_extensions_config()
-        return McpConfigResponse(mcp_servers={name: McpServerConfigResponse(**server.model_dump()) for name, server in reloaded_config.mcp_servers.items()})
+        return McpConfigResponse(
+            mcp_servers={name: McpServerConfigResponse(**server.model_dump()) for name, server in reloaded_config.mcp_servers.items()},
+            tool_interceptors=reloaded_config.tool_interceptors,
+        )
 
     except Exception as e:
         logger.error(f"Failed to update MCP configuration: {e}", exc_info=True)

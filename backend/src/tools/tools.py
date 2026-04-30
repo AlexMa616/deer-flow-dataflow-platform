@@ -25,6 +25,7 @@ def get_available_tools(
     include_mcp: bool = True,
     model_name: str | None = None,
     subagent_enabled: bool = False,
+    web_search_enabled: bool = True,
 ) -> list[BaseTool]:
     """Get all available tools from config.
 
@@ -36,12 +37,18 @@ def get_available_tools(
         include_mcp: Whether to include tools from MCP servers (default: True).
         model_name: Optional model name to determine if vision tools should be included.
         subagent_enabled: Whether to include subagent tools (task, task_status).
+        web_search_enabled: Whether to expose web search/fetch tools.
 
     Returns:
         List of available tools.
     """
     config = get_app_config()
-    loaded_tools = [resolve_variable(tool.use, BaseTool) for tool in config.tools if groups is None or tool.group in groups]
+    loaded_tools = [
+        resolve_variable(tool.use, BaseTool)
+        for tool in config.tools
+        if (groups is None or tool.group in groups)
+        and (web_search_enabled or tool.group != "web")
+    ]
 
     # Get cached MCP tools if enabled
     # NOTE: We use ExtensionsConfig.from_file() instead of config.extensions

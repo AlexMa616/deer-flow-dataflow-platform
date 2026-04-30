@@ -25,6 +25,8 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     if model_config is None:
         raise ValueError(f"Model {name} not found in config") from None
     model_class = resolve_class(model_config.use, BaseChatModel)
+    provider_thinking_mode = model_config.provider_thinking_mode
+    thinking_requested = thinking_enabled and provider_thinking_mode == "native"
     model_settings_from_config = model_config.model_dump(
         exclude_none=True,
         exclude={
@@ -40,9 +42,11 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             "ultra_uses_plan_mode",
             "when_thinking_enabled",
             "supports_vision",
+            "supports_workflow_modes",
+            "provider_thinking_mode",
         },
     )
-    if thinking_enabled and model_config.when_thinking_enabled is not None:
+    if thinking_requested and model_config.when_thinking_enabled is not None:
         if not model_config.supports_thinking:
             raise ValueError(f"Model {name} does not support thinking. Set `supports_thinking` to true in the `config.yaml` to enable thinking.") from None
         model_settings_from_config.update(model_config.when_thinking_enabled)

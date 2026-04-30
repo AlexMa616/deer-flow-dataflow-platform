@@ -8,6 +8,11 @@ LOG_DIR="$ROOT_DIR/logs"
 RUN_DIR="$ROOT_DIR/.run"
 NGINX_CONF="$ROOT_DIR/docker/nginx/nginx.local.conf"
 UV_CACHE_DIR="${UV_CACHE_DIR:-$ROOT_DIR/.uv-cache}"
+NODE_BIN_DIR="${DEERFLOW_NODE_BIN_DIR:-/opt/homebrew/opt/node@24/bin}"
+
+if [[ -x "$NODE_BIN_DIR/node" ]]; then
+  export PATH="$NODE_BIN_DIR:$PATH"
+fi
 
 PORT_PROXY="${PORT_PROXY:-2026}"
 PORT_LANGGRAPH="${PORT_LANGGRAPH:-2024}"

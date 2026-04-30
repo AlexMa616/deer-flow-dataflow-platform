@@ -4,6 +4,7 @@ import type { ChatStatus } from "ai";
 import {
   CheckIcon,
   GraduationCapIcon,
+  GlobeIcon,
   LightbulbIcon,
   PaperclipIcon,
   PlusIcon,
@@ -15,6 +16,7 @@ import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useState,
   type ComponentProps,
@@ -45,6 +47,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import type { AgentThreadContext } from "@/core/threads";
@@ -74,10 +77,11 @@ function getDefaultModeForModel(
   model:
     | {
         supports_thinking?: boolean;
+        supports_workflow_modes?: boolean;
       }
     | undefined,
 ): "flash" | "thinking" {
-  if (!model?.supports_thinking) {
+  if (!model?.supports_thinking && !model?.supports_workflow_modes) {
     return "flash";
   }
   return "thinking";
@@ -90,6 +94,7 @@ function sanitizeModeForModel(
         supports_thinking?: boolean;
         supports_plan_mode?: boolean;
         supports_subagents?: boolean;
+        supports_workflow_modes?: boolean;
       }
     | undefined,
 ): "flash" | "thinking" | "pro" | "ultra" | undefined {
@@ -97,7 +102,7 @@ function sanitizeModeForModel(
     return mode;
   }
 
-  if (!model.supports_thinking) {
+  if (!model.supports_thinking && !model.supports_workflow_modes) {
     return "flash";
   }
 
@@ -114,6 +119,43 @@ function sanitizeModeForModel(
   }
 
   return mode;
+}
+
+function getModelProviderMeta(modelName?: string) {
+  const normalized = modelName?.toLowerCase() ?? "";
+  if (normalized.includes("codex")) {
+    return {
+      dot: "bg-[#2563eb]",
+      label: "Codex",
+      pill: "border-blue-100 bg-blue-50 text-blue-700",
+    };
+  }
+  if (normalized.startsWith("gpt")) {
+    return {
+      dot: "bg-[#111827]",
+      label: "GPT",
+      pill: "border-slate-200 bg-slate-50 text-slate-700",
+    };
+  }
+  if (normalized.startsWith("gemma")) {
+    return {
+      dot: "bg-[#34a853]",
+      label: "Gemma",
+      pill: "border-emerald-100 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (normalized.startsWith("qwen")) {
+    return {
+      dot: "bg-[#06b6d4]",
+      label: "Qwen",
+      pill: "border-cyan-100 bg-cyan-50 text-cyan-700",
+    };
+  }
+  return {
+    dot: "bg-[#64748b]",
+    label: "LLM",
+    pill: "border-slate-200 bg-slate-50 text-slate-700",
+  };
 }
 
 export function InputBox({
@@ -164,6 +206,7 @@ export function InputBox({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const webSearchSwitchId = useId();
   const isTerminal = appearance === "terminal";
   const { models } = useModels();
   const selectedModel = useMemo(() => {
@@ -180,8 +223,11 @@ export function InputBox({
     }
     return models.find((m) => m.name === context.model_name);
   }, [context, models, onContextChange]);
+  const selectedModelProvider = getModelProviderMeta(selectedModel?.name);
   const supportThinking = useMemo(
-    () => selectedModel?.supports_thinking ?? false,
+    () =>
+      Boolean(selectedModel?.supports_thinking) ||
+      Boolean(selectedModel?.supports_workflow_modes),
     [selectedModel],
   );
   const supportsPlanMode = useMemo(
@@ -195,6 +241,7 @@ export function InputBox({
       (selectedModel?.supports_subagents ?? supportsPlanMode),
     [selectedModel, supportsPlanMode],
   );
+  const webSearchEnabled = context.web_search_enabled !== false;
   const handleModelSelect = useCallback(
     (model_name: string) => {
       const nextModel = models.find((m) => m.name === model_name);
@@ -215,6 +262,15 @@ export function InputBox({
       });
     },
     [onContextChange, context],
+  );
+  const handleWebSearchToggle = useCallback(
+    (checked: boolean) => {
+      onContextChange?.({
+        ...context,
+        web_search_enabled: checked,
+      });
+    },
+    [context, onContextChange],
   );
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
@@ -319,6 +375,46 @@ export function InputBox({
                 : "rounded-full text-slate-600 hover:bg-slate-100",
             )}
           />
+          <Tooltip
+            content={
+              webSearchEnabled
+                ? t.inputBox.webSearchOnDescription
+                : t.inputBox.webSearchOffDescription
+            }
+          >
+            <div
+              className={cn(
+                "flex h-8 items-center gap-2 rounded-full px-2.5 text-xs transition",
+                isTerminal
+                  ? webSearchEnabled
+                    ? "bg-cyan-400/10 text-cyan-200"
+                    : "text-slate-500"
+                  : webSearchEnabled
+                    ? "bg-cyan-50 text-cyan-700"
+                    : "text-slate-500",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <GlobeIcon className="size-3" />
+              <label
+                className="cursor-pointer font-normal"
+                htmlFor={webSearchSwitchId}
+              >
+                {t.inputBox.webSearch}
+              </label>
+              <Switch
+                aria-label={t.inputBox.webSearch}
+                checked={webSearchEnabled}
+                className={cn(
+                  "h-4 w-7",
+                  webSearchEnabled ? "data-[state=checked]:bg-cyan-600" : "",
+                )}
+                disabled={disabled}
+                id={webSearchSwitchId}
+                onCheckedChange={handleWebSearchToggle}
+              />
+            </div>
+          </Tooltip>
           <PromptInputActionMenu>
             <ModeHoverGuide
               mode={
@@ -517,34 +613,77 @@ export function InputBox({
             <ModelSelectorTrigger asChild>
               <PromptInputButton
                 className={cn(
-                  "px-3",
+                  "max-w-[210px] min-w-0 gap-2 px-3",
                   isTerminal
                     ? "rounded-xl text-slate-300 hover:bg-white/8 hover:text-white"
                     : "rounded-full text-slate-600 hover:bg-slate-100",
                 )}
               >
-                <ModelSelectorName className="text-xs font-normal">
-                  {selectedModel?.display_name}
+                <span
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    selectedModelProvider.dot,
+                  )}
+                />
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none font-semibold",
+                    selectedModelProvider.pill,
+                  )}
+                >
+                  {selectedModelProvider.label}
+                </span>
+                <ModelSelectorName className="min-w-0 text-xs font-medium">
+                  {selectedModel?.display_name ?? selectedModel?.name}
                 </ModelSelectorName>
               </PromptInputButton>
             </ModelSelectorTrigger>
-            <ModelSelectorContent>
+            <ModelSelectorContent className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-[520px]">
               <ModelSelectorInput placeholder={t.inputBox.searchModels} />
-              <ModelSelectorList>
-                {models.map((m) => (
-                  <ModelSelectorItem
-                    key={m.name}
-                    value={m.name}
-                    onSelect={() => handleModelSelect(m.name)}
-                  >
-                    <ModelSelectorName>{m.display_name}</ModelSelectorName>
-                    {m.name === context.model_name ? (
-                      <CheckIcon className="ml-auto size-4" />
-                    ) : (
-                      <div className="ml-auto size-4" />
-                    )}
-                  </ModelSelectorItem>
-                ))}
+              <ModelSelectorList className="max-h-[420px] p-2">
+                {models.map((m) => {
+                  const provider = getModelProviderMeta(m.name);
+                  return (
+                    <ModelSelectorItem
+                      key={m.name}
+                      value={`${m.name} ${m.display_name ?? ""} ${m.description ?? ""}`}
+                      className="items-start gap-3 rounded-[18px] px-3 py-3 data-[selected=true]:bg-slate-50"
+                      onSelect={() => handleModelSelect(m.name)}
+                    >
+                      <span
+                        className={cn(
+                          "mt-1 size-2.5 shrink-0 rounded-full",
+                          provider.dot,
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <ModelSelectorName className="text-sm font-semibold text-slate-900">
+                            {m.display_name ?? m.name}
+                          </ModelSelectorName>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] leading-none font-semibold",
+                              provider.pill,
+                            )}
+                          >
+                            {provider.label}
+                          </span>
+                        </span>
+                        {m.description ? (
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            {m.description}
+                          </span>
+                        ) : null}
+                      </span>
+                      {m.name === context.model_name ? (
+                        <CheckIcon className="mt-0.5 size-4 shrink-0 text-slate-900" />
+                      ) : (
+                        <div className="mt-0.5 size-4 shrink-0" />
+                      )}
+                    </ModelSelectorItem>
+                  );
+                })}
               </ModelSelectorList>
             </ModelSelectorContent>
           </ModelSelector>

@@ -6,5 +6,6 @@ export interface Model {
   supports_thinking?: boolean;
   supports_plan_mode?: boolean;
   supports_subagents?: boolean;
+  supports_workflow_modes?: boolean;
   ultra_uses_plan_mode?: boolean;
 }

@@ -18,6 +18,39 @@ import { cn } from "@/lib/utils";
 
 type AuthMode = "login" | "register";
 type FieldKey = "username" | "email" | "password" | "confirmPassword";
+type StageKey = "ask" | "plan" | "work" | "ship";
+
+const WORKFLOW_STAGES: Array<{
+  key: StageKey;
+  label: string;
+  description: string;
+  tone: string;
+}> = [
+  {
+    key: "ask",
+    label: "Ask",
+    description: "输入身份",
+    tone: "bg-[#eaf4ff]",
+  },
+  {
+    key: "plan",
+    label: "Plan",
+    description: "同步资料",
+    tone: "bg-white/70",
+  },
+  {
+    key: "work",
+    label: "Work",
+    description: "保护会话",
+    tone: "bg-[#ecfdf5]",
+  },
+  {
+    key: "ship",
+    label: "Ship",
+    description: "进入空间",
+    tone: "bg-white/70",
+  },
+];
 
 function resolveReturnTo(raw: string | null) {
   if (raw?.startsWith("/workspace/")) {
@@ -59,6 +92,8 @@ export default function LoginPage() {
   const [focusedField, setFocusedField] = useState<FieldKey | null>(null);
   const [typingBeat, setTypingBeat] = useState(0);
   const [typingPulse, setTypingPulse] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<StageKey>("ask");
+  const [hoveredStage, setHoveredStage] = useState<StageKey | null>(null);
 
   useEffect(() => {
     document.title = "DeerFlow";
@@ -93,6 +128,17 @@ export default function LoginPage() {
       (confirmPassword ? 12 : 0),
   );
   const agentBadge = username.trim().slice(0, 2).toUpperCase() || "AI";
+  const focusedStage: StageKey | null =
+    focusedField === "username"
+      ? "ask"
+      : focusedField === "email"
+        ? "plan"
+        : focusedField === "password"
+          ? "work"
+          : focusedField === "confirmPassword"
+            ? "ship"
+            : null;
+  const liveStage = hoveredStage ?? focusedStage ?? selectedStage;
   const loginShellStyle = {
     "--mouse-x": `${pointer.x}%`,
     "--mouse-y": `${pointer.y}%`,
@@ -115,10 +161,22 @@ export default function LoginPage() {
   ) {
     const value = event.target.value;
     setTypingBeat((current) => current + 1);
-    if (field === "username") setUsername(value);
-    if (field === "email") setEmail(value);
-    if (field === "password") setPassword(value);
-    if (field === "confirmPassword") setConfirmPassword(value);
+    if (field === "username") {
+      setSelectedStage("ask");
+      setUsername(value);
+    }
+    if (field === "email") {
+      setSelectedStage("plan");
+      setEmail(value);
+    }
+    if (field === "password") {
+      setSelectedStage("work");
+      setPassword(value);
+    }
+    if (field === "confirmPassword") {
+      setSelectedStage("ship");
+      setConfirmPassword(value);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -175,22 +233,12 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(15,23,42,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.05)_1px,transparent_1px)] [background-size:44px_44px] opacity-[0.34]" />
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-none items-center px-1.5 py-1.5 sm:px-2 sm:py-2">
-        <div className="grid min-h-[calc(100vh-16px)] w-full overflow-hidden rounded-[30px] border border-white bg-white shadow-[0_28px_90px_rgba(15,23,42,0.13)] lg:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)]">
-          <section className="login-agent-stage relative hidden min-h-[700px] overflow-hidden bg-[#eef5ff] lg:block">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(37,99,235,0.24),transparent_24%),radial-gradient(circle_at_78%_24%,rgba(45,212,191,0.16),transparent_24%),linear-gradient(145deg,#f8fbff_0%,#eef6ff_58%,#e8f4ff_100%)]" />
-            <div className="login-agent-pointer absolute inset-0" />
-            <div className="login-brand-pill absolute top-8 left-8 flex items-center gap-3 rounded-full border border-white/70 bg-white/76 px-4 py-2 shadow-[0_16px_42px_rgba(15,23,42,0.08)] backdrop-blur">
-              <DeerFlowMark className="size-8" />
-              <span className="text-[12px] font-semibold tracking-[0.2em] text-[#344054] uppercase">
-                DeerFlow
-              </span>
-            </div>
-
-            <div className="login-agent-canvas absolute inset-x-6 top-20 bottom-6 xl:inset-x-8">
-              <div className="login-agent-glass relative h-full rounded-[42px] border border-white/72 bg-white/54 p-7 shadow-[0_30px_80px_rgba(59,130,246,0.16)] backdrop-blur-xl xl:p-8">
+        <div className="login-auth-layout grid min-h-[calc(100vh-16px)] w-full overflow-hidden rounded-[42px] border border-white/80 bg-[#eef5ff] shadow-[0_28px_90px_rgba(15,23,42,0.13)] lg:grid-cols-[minmax(0,1.18fr)_minmax(500px,0.82fr)]">
+          <section className="login-agent-stage relative hidden min-h-[700px] overflow-hidden bg-transparent lg:block">
+            <div className="login-agent-canvas absolute inset-5 xl:inset-6">
+              <div className="login-agent-glass relative h-full p-7 xl:p-8">
                 <div className="absolute top-10 -left-8 h-36 w-36 rounded-full bg-[#bfdbfe]/70 blur-2xl" />
                 <div className="absolute -right-12 bottom-16 h-48 w-48 rounded-full bg-[#99f6e4]/55 blur-3xl" />
-                <div className="absolute inset-0 rounded-[38px] bg-[linear-gradient(115deg,rgba(255,255,255,0.0)_18%,rgba(255,255,255,0.55)_42%,rgba(255,255,255,0.0)_68%)] opacity-50" />
 
                 <div className="relative grid h-full grid-rows-[auto_1fr_auto] gap-6">
                   <div className="flex items-center justify-between">
@@ -199,11 +247,12 @@ export default function LoginPage() {
                       <span className="size-3 rounded-full bg-[#7dd3fc]" />
                       <span className="size-3 rounded-full bg-[#86efac]" />
                     </div>
-                    <span className="flex items-center gap-1.5 rounded-full border border-white/80 bg-white/70 px-3 py-2">
-                      <span className="size-1.5 rounded-full bg-[#2563eb]" />
-                      <span className="size-1.5 rounded-full bg-[#38bdf8]" />
-                      <span className="size-1.5 rounded-full bg-[#99f6e4]" />
-                    </span>
+                    <div className="login-brand-pill login-brand-pill-inset flex items-center gap-3 rounded-full border border-white/75 bg-white/78 px-4 py-2 shadow-[0_16px_42px_rgba(15,23,42,0.08)] backdrop-blur">
+                      <DeerFlowMark className="size-8" />
+                      <span className="text-[12px] font-semibold tracking-[0.2em] text-[#344054] uppercase">
+                        DeerFlow
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid min-h-0 place-items-center">
@@ -280,39 +329,61 @@ export default function LoginPage() {
                   </div>
 
                   <div className="relative grid grid-cols-4 gap-3">
-                    {[
-                      ["Ask", "bg-[#eaf4ff]"],
-                      ["Plan", "bg-white/66"],
-                      ["Work", "bg-[#ecfdf5]"],
-                      ["Ship", "bg-white/66"],
-                    ].map(([item, tone], index) => (
-                      <div
-                        key={item}
-                        className={cn(
-                          "login-agent-step h-20 rounded-[22px] border border-white/70 p-3 shadow-[0_12px_30px_rgba(15,23,42,0.06)]",
-                          tone,
-                        )}
-                        style={{ animationDelay: `${index * 0.18}s` }}
-                      >
-                        <div className="text-[11px] font-semibold text-[#98a2b3]">
-                          {item}
-                        </div>
-                        <div className="mt-6 h-2 overflow-hidden rounded-full bg-[#d0d5dd]">
-                          <div className="login-agent-step-line h-full rounded-full bg-[#2563eb]/70" />
-                        </div>
-                      </div>
-                    ))}
+                    {WORKFLOW_STAGES.map((stage, index) => {
+                      const isActive = liveStage === stage.key;
+                      const stageSignal = Math.min(
+                        100,
+                        Math.max(24, signalLevel + (isActive ? 28 : index * 5)),
+                      );
+
+                      return (
+                        <button
+                          key={stage.key}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => setSelectedStage(stage.key)}
+                          onPointerEnter={() => setHoveredStage(stage.key)}
+                          onPointerLeave={() => setHoveredStage(null)}
+                          className={cn(
+                            "login-agent-step group h-24 rounded-[24px] border border-white/70 p-3 text-left shadow-[0_12px_30px_rgba(15,23,42,0.06)]",
+                            stage.tone,
+                            isActive && "is-active",
+                          )}
+                          style={
+                            {
+                              animationDelay: `${index * 0.18}s`,
+                              "--stage-signal": `${stageSignal}%`,
+                            } as CSSProperties
+                          }
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-[11px] font-semibold text-[#98a2b3] transition group-hover:text-[#2563eb]">
+                                {stage.label}
+                              </div>
+                              <div className="mt-1 text-[11px] font-medium text-[#667085]/70">
+                                {stage.description}
+                              </div>
+                            </div>
+                            <span className="login-agent-step-dot" />
+                          </div>
+                          <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#d0d5dd]">
+                            <div className="login-agent-step-line h-full rounded-full bg-[#2563eb]/70" />
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </div>
           </section>
 
-          <section className="relative flex min-h-[700px] items-center overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-5 py-7 sm:px-8 lg:px-10 xl:px-12">
+          <section className="login-auth-stage relative flex min-h-[700px] items-center overflow-hidden bg-transparent px-5 py-7 sm:px-8 lg:px-10 xl:px-12">
             <div className="pointer-events-none absolute -top-24 right-10 size-72 rounded-full bg-[#dbeafe]/70 blur-3xl" />
             <div className="pointer-events-none absolute right-28 -bottom-24 size-72 rounded-full bg-[#ccfbf1]/55 blur-3xl" />
 
-            <div className="login-auth-panel relative mx-auto w-full max-w-[560px] rounded-[38px] border border-[#e6edf6] bg-white/88 p-7 shadow-[0_30px_82px_rgba(16,24,40,0.10)] backdrop-blur-xl sm:p-8 xl:p-9">
+            <div className="login-auth-panel relative z-[2] mx-auto w-full max-w-[560px] rounded-[38px] border border-[#e6edf6] bg-white/88 p-7 shadow-[0_30px_82px_rgba(16,24,40,0.10)] backdrop-blur-xl sm:p-8 xl:p-9">
               <div className="mb-10 flex items-center justify-between lg:hidden">
                 <div className="login-brand-pill flex items-center gap-3 rounded-full">
                   <DeerFlowMark className="size-9" />

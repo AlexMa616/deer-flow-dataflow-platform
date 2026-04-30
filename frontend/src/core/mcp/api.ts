@@ -8,7 +8,7 @@ export async function loadMCPConfig() {
 }
 
 export async function updateMCPConfig(config: MCPConfig) {
-  return requestJSON<{ success?: boolean; message?: string }>(
+  return requestJSON<MCPConfig>(
     `${getBackendBaseURL()}/api/mcp/config`,
     {
       method: "PUT",

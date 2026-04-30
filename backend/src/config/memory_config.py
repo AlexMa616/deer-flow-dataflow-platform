@@ -1,5 +1,7 @@
 """Configuration for memory mechanism."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -14,11 +16,29 @@ class MemoryConfig(BaseModel):
         default=".deer-flow/memory.json",
         description="Path to store memory data (relative to backend directory)",
     )
+    storage_backend: Literal["file", "postgres", "mongo"] = Field(
+        default="file",
+        description="Memory storage backend. Non-file backends are configuration-ready extension points.",
+    )
+    database_url: str | None = Field(
+        default=None,
+        description="Connection URL for postgres or mongo memory storage backends",
+    )
+    collection_name: str = Field(
+        default="deerflow_memory",
+        description="Collection/table name for database-backed memory storage",
+    )
     debounce_seconds: int = Field(
         default=30,
         ge=1,
         le=300,
         description="Seconds to wait before processing queued updates (debounce)",
+    )
+    max_pending_contexts: int = Field(
+        default=200,
+        ge=10,
+        le=10_000,
+        description="Maximum pending memory update contexts retained before dropping oldest entries",
     )
     model_name: str | None = Field(
         default=None,

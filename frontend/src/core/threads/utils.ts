@@ -128,7 +128,10 @@ export type ThreadErrorDisplay = {
 };
 
 function isThreadNotFoundRaw(raw: string) {
-  return /thread with id .* not found|thread .* not found/i.test(raw);
+  return (
+    /thread with id .* not found|thread .* not found/i.test(raw) ||
+    /notfounderror|404[^\d]|not found/i.test(raw)
+  );
 }
 
 export function getThreadErrorDisplay(error: unknown): ThreadErrorDisplay {

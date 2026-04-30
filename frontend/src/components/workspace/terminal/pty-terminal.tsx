@@ -55,6 +55,17 @@ const TERMINAL_FONT_FAMILY =
 const TERMINAL_FONT_SIZE = 13;
 const TERMINAL_LINE_HEIGHT = 1.45;
 const TERMINAL_LETTER_SPACING = 0.2;
+const MIN_TERMINAL_COLS = 2;
+const MAX_TERMINAL_COLS = 400;
+const MIN_TERMINAL_ROWS = 1;
+const MAX_TERMINAL_ROWS = 200;
+
+function clampTerminalSize(cols: number, rows: number) {
+  return {
+    cols: Math.min(MAX_TERMINAL_COLS, Math.max(MIN_TERMINAL_COLS, cols)),
+    rows: Math.min(MAX_TERMINAL_ROWS, Math.max(MIN_TERMINAL_ROWS, rows)),
+  };
+}
 
 export const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
   function PtyTerminal(
@@ -127,23 +138,7 @@ export const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
       if (host.clientWidth < 20 || host.clientHeight < 20) {
         return;
       }
-      const core = (
-        terminal as Terminal & {
-          _core?: {
-            _renderService?: {
-              _renderer?: {
-                value?: {
-                  dimensions?: unknown;
-                };
-              };
-            };
-          };
-        }
-      )._core;
-      if (
-        !terminalReadyRef.current ||
-        !core?._renderService?._renderer?.value?.dimensions
-      ) {
+      if (!terminalReadyRef.current) {
         return;
       }
       const terminalElement = host.querySelector<HTMLElement>(".xterm");
@@ -158,16 +153,10 @@ export const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
       const paddingY =
         Number.parseFloat(elementStyles.paddingTop) +
         Number.parseFloat(elementStyles.paddingBottom);
-      const nextSize = {
-        cols: Math.max(
-          2,
-          Math.floor((host.clientWidth - paddingX) / cell.width),
-        ),
-        rows: Math.max(
-          1,
-          Math.floor((host.clientHeight - paddingY) / cell.height),
-        ),
-      };
+      const nextSize = clampTerminalSize(
+        Math.floor((host.clientWidth - paddingX) / cell.width),
+        Math.floor((host.clientHeight - paddingY) / cell.height),
+      );
       if (!Number.isFinite(nextSize.cols) || !Number.isFinite(nextSize.rows)) {
         return;
       }

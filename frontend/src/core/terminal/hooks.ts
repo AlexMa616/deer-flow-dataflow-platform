@@ -30,6 +30,19 @@ type TerminalEvent =
     };
 
 const MAX_OUTPUT_CHARS = 200_000;
+const MIN_TERMINAL_COLS = 2;
+const MAX_TERMINAL_COLS = 400;
+const MIN_TERMINAL_ROWS = 1;
+const MAX_TERMINAL_ROWS = 200;
+
+function normalizeTerminalSize(cols: number, rows: number) {
+  const safeCols = Number.isFinite(cols) ? Math.floor(cols) : MIN_TERMINAL_COLS;
+  const safeRows = Number.isFinite(rows) ? Math.floor(rows) : MIN_TERMINAL_ROWS;
+  return {
+    cols: Math.min(MAX_TERMINAL_COLS, Math.max(MIN_TERMINAL_COLS, safeCols)),
+    rows: Math.min(MAX_TERMINAL_ROWS, Math.max(MIN_TERMINAL_ROWS, safeRows)),
+  };
+}
 
 function trimOutput(output: string) {
   if (output.length <= MAX_OUTPUT_CHARS) {
@@ -209,7 +222,10 @@ export function useTerminalSession(
   }, [autoStart, closeStream, enabled, hydrateSession, threadId]);
 
   const runCommand = useCallback(
-    async (command: string, { addNewline = true }: { addNewline?: boolean } = {}) => {
+    async (
+      command: string,
+      { addNewline = true }: { addNewline?: boolean } = {},
+    ) => {
       if (!threadId) {
         throw new Error("Thread ID is required to send terminal input");
       }
@@ -269,6 +285,7 @@ export function useTerminalSession(
       if (!threadId) {
         throw new Error("Thread ID is required to resize terminal");
       }
+      const nextSize = normalizeTerminalSize(cols, rows);
       if (
         !state?.session_id ||
         state.status === "stopped" ||
@@ -276,7 +293,7 @@ export function useTerminalSession(
       ) {
         await hydrateSession({ forceStart: true });
       }
-      const response = await resizeTerminal(threadId, { cols, rows });
+      const response = await resizeTerminal(threadId, nextSize);
       setState(response.state);
       if (response.state.session_id) {
         connectStream(response.state.session_id);

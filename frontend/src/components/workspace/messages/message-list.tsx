@@ -60,12 +60,17 @@ export function MessageList({
     () => buildVisibleMessagesFromHistory(history, messagesOverride ?? thread.messages),
     [history, messagesOverride, thread.messages],
   );
+  const hasMessages = messages.length > 0;
   if (thread.isThreadLoading) {
     return <MessageListSkeleton />;
   }
   return (
     <Conversation
-      className={cn("flex min-h-0 flex-1 flex-col justify-center", className)}
+      className={cn(
+        "flex min-h-0 flex-1 flex-col",
+        hasMessages ? "justify-start" : "justify-center",
+        className,
+      )}
     >
       <ConversationContent className="mx-auto w-full max-w-(--container-width-lg) gap-5 px-3 pt-6 md:px-4 md:pt-8">
         {groupMessages(messages, (group) => {

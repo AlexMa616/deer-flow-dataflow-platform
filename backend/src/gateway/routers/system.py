@@ -43,6 +43,8 @@ class MemorySummary(BaseModel):
     facts: int
     last_updated: str | None
     storage_path: str
+    storage_backend: str
+    max_pending_contexts: int
 
 
 class ModelSummary(BaseModel):
@@ -193,6 +195,8 @@ def _get_memory_summary(memory_config) -> MemorySummary:
         facts=len(memory_data.get("facts", [])),
         last_updated=memory_data.get("lastUpdated"),
         storage_path=memory_config.storage_path,
+        storage_backend=memory_config.storage_backend,
+        max_pending_contexts=memory_config.max_pending_contexts,
     )
 
 

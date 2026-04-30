@@ -174,6 +174,13 @@ Being proactive with task management demonstrates thoroughness and ensures all r
     return TodoListMiddleware(system_prompt=system_prompt, tool_description=tool_description)
 
 
+def _get_runtime_context(config: RunnableConfig) -> dict:
+    """Read run context from the LangGraph 0.6+ context field, with legacy fallback."""
+    legacy_configurable = config.get("configurable", {}) or {}
+    runtime_context = config.get("context", {}) or {}
+    return {**legacy_configurable, **runtime_context}
+
+
 # ThreadDataMiddleware must be before SandboxMiddleware to ensure thread_id is available
 # UploadsMiddleware should be after ThreadDataMiddleware to access thread_id
 # DanglingToolCallMiddleware patches missing ToolMessages before model sees the history
@@ -207,7 +214,8 @@ def _build_middlewares(config: RunnableConfig):
         middlewares.append(summarization_middleware)
 
     # Add TodoList middleware if plan mode is enabled
-    is_plan_mode = config.get("configurable", {}).get("is_plan_mode", False)
+    runtime_context = _get_runtime_context(config)
+    is_plan_mode = runtime_context.get("is_plan_mode", False)
     todo_list_middleware = _create_todo_list_middleware(is_plan_mode)
     if todo_list_middleware is not None:
         middlewares.append(todo_list_middleware)
@@ -219,7 +227,7 @@ def _build_middlewares(config: RunnableConfig):
     middlewares.append(MemoryMiddleware())
 
     # Add ViewImageMiddleware only if the current model supports vision
-    model_name = config.get("configurable", {}).get("model_name") or config.get("configurable", {}).get("model")
+    model_name = runtime_context.get("model_name") or runtime_context.get("model")
     from src.config import get_app_config
 
     app_config = get_app_config()
@@ -232,9 +240,9 @@ def _build_middlewares(config: RunnableConfig):
         middlewares.append(ViewImageMiddleware())
 
     # Add SubagentLimitMiddleware to truncate excess parallel task calls
-    subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
+    subagent_enabled = runtime_context.get("subagent_enabled", False)
     if subagent_enabled:
-        max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
+        max_concurrent_subagents = runtime_context.get("max_concurrent_subagents", 3)
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
     # Pipeline specific metrics trace 
@@ -250,12 +258,13 @@ def make_lead_agent(config: RunnableConfig):
     from src.config import get_app_config
     from src.tools import get_available_tools
 
-    configurable = dict(config.get("configurable", {}))
-    thinking_enabled = configurable.get("thinking_enabled", True)
-    model_name = configurable.get("model_name") or configurable.get("model")
-    is_plan_mode = configurable.get("is_plan_mode", False)
-    subagent_enabled = configurable.get("subagent_enabled", False)
-    max_concurrent_subagents = configurable.get("max_concurrent_subagents", 3)
+    runtime_context = _get_runtime_context(config)
+    thinking_enabled = runtime_context.get("thinking_enabled", True)
+    model_name = runtime_context.get("model_name") or runtime_context.get("model")
+    is_plan_mode = runtime_context.get("is_plan_mode", False)
+    subagent_enabled = runtime_context.get("subagent_enabled", False)
+    max_concurrent_subagents = runtime_context.get("max_concurrent_subagents", 3)
+    web_search_enabled = runtime_context.get("web_search_enabled", True)
 
     app_config = get_app_config()
     if model_name is None and app_config.models:
@@ -270,32 +279,43 @@ def make_lead_agent(config: RunnableConfig):
     ):
         effective_is_plan_mode = False
 
-    configurable["is_plan_mode"] = effective_is_plan_mode
+    runtime_context["is_plan_mode"] = effective_is_plan_mode
     if model_name is not None:
-        configurable["model_name"] = model_name
-    config["configurable"] = configurable
+        runtime_context["model_name"] = model_name
+    if "context" in config:
+        config["context"] = runtime_context
+    else:
+        config["configurable"] = runtime_context
 
     print(
         "thinking_enabled: "
         f"{thinking_enabled}, model_name: {model_name}, "
         f"is_plan_mode: {effective_is_plan_mode}, "
         f"subagent_enabled: {subagent_enabled}, "
-        f"max_concurrent_subagents: {max_concurrent_subagents}"
+        f"max_concurrent_subagents: {max_concurrent_subagents}, "
+        f"web_search_enabled: {web_search_enabled}"
     )
     
     # Inject run metadata for LangSmith trace tagging
     if "metadata" not in config:
         config["metadata"] = {}
+    config.setdefault("run_name", "lead_agent")
     config["metadata"].update({
+        "agent_name": "lead_agent",
         "model_name": model_name or "default",
         "thinking_enabled": thinking_enabled,
         "is_plan_mode": effective_is_plan_mode,
         "subagent_enabled": subagent_enabled,
+        "web_search_enabled": web_search_enabled,
     })
     
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled),
-        tools=get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled),
+        tools=get_available_tools(
+            model_name=model_name,
+            subagent_enabled=subagent_enabled,
+            web_search_enabled=web_search_enabled,
+        ),
         middleware=_build_middlewares(config),
         system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents),
         state_schema=ThreadState,

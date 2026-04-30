@@ -7,6 +7,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   context: {
     model_name: undefined,
     mode: undefined,
+    web_search_enabled: true,
   },
   layout: {
     sidebar_collapsed: false,

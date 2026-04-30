@@ -120,11 +120,13 @@ def task_tool(
     thread_id = None
     parent_model = None
     trace_id = None
+    web_search_enabled = True
 
     if runtime is not None:
         sandbox_state = runtime.state.get("sandbox")
         thread_data = runtime.state.get("thread_data")
         thread_id = runtime.context.get("thread_id")
+        web_search_enabled = runtime.context.get("web_search_enabled", True)
 
         # Try to get parent model from configurable
         metadata = runtime.config.get("metadata", {})
@@ -152,6 +154,7 @@ def task_tool(
     tools = get_available_tools(
         model_name=subagent_model_name or parent_model,
         subagent_enabled=False,
+        web_search_enabled=web_search_enabled,
     )
 
     # Create executor

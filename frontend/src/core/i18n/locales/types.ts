@@ -64,6 +64,9 @@ export interface Translations {
     proModeDescription: string;
     ultraMode: string;
     ultraModeDescription: string;
+    webSearch: string;
+    webSearchOnDescription: string;
+    webSearchOffDescription: string;
     searchModels: string;
     surpriseMe: string;
     surpriseMePrompt: string;

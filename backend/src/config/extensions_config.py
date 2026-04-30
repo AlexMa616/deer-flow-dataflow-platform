@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +28,34 @@ class SkillStateConfig(BaseModel):
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
 
 
+class McpToolInterceptorConfig(BaseModel):
+    """Declarative rule for shaping MCP tools before they reach the agent."""
+
+    enabled: bool = Field(default=True, description="Whether this interceptor rule is enabled")
+    action: Literal["allow", "deny", "decorate"] = Field(
+        default="decorate",
+        description="Interceptor action: allowlist matching tools, deny matching tools, or decorate metadata/description",
+    )
+    server: str | None = Field(
+        default=None,
+        description="Optional server name glob. If omitted, the rule applies to tools from any MCP server.",
+    )
+    tool: str = Field(default="*", description="Tool name glob, for example `github_*` or `search`")
+    description_prefix: str | None = Field(
+        default=None,
+        alias="descriptionPrefix",
+        description="Optional text prepended to the tool description",
+    )
+    description_suffix: str | None = Field(
+        default=None,
+        alias="descriptionSuffix",
+        description="Optional text appended to the tool description",
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags added to matching tools")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata merged into matching tools")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+
 class ExtensionsConfig(BaseModel):
     """Unified configuration for MCP servers and skills."""
 
@@ -39,6 +67,11 @@ class ExtensionsConfig(BaseModel):
     skills: dict[str, SkillStateConfig] = Field(
         default_factory=dict,
         description="Map of skill name to state configuration",
+    )
+    tool_interceptors: list[McpToolInterceptorConfig] = Field(
+        default_factory=list,
+        alias="toolInterceptors",
+        description="Rules for allowing, denying, or decorating MCP tools",
     )
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -116,10 +149,12 @@ class ExtensionsConfig(BaseModel):
         return cls.model_validate(config_data)
 
     @classmethod
-    def resolve_env_variables(cls, config: dict[str, Any]) -> dict[str, Any]:
+    def resolve_env_variables(cls, config: Any) -> Any:
         """Recursively resolve environment variables in the config.
 
         Environment variables are resolved using the `os.getenv` function. Example: $OPENAI_API_KEY
+        Missing variables intentionally resolve to an empty string, matching MCP config behavior
+        in upstream DeerFlow and avoiding leaking unresolved `$VAR` placeholders to child processes.
 
         Args:
             config: The config to resolve environment variables in.
@@ -127,18 +162,18 @@ class ExtensionsConfig(BaseModel):
         Returns:
             The config with environment variables resolved.
         """
-        for key, value in config.items():
-            if isinstance(value, str):
-                if value.startswith("$"):
-                    env_value = os.getenv(value[1:], None)
-                    if env_value is not None:
-                        config[key] = env_value
-                else:
-                    config[key] = value
-            elif isinstance(value, dict):
+        if isinstance(config, str):
+            if config.startswith("$"):
+                return os.getenv(config[1:], "")
+            return config
+        if isinstance(config, dict):
+            for key, value in list(config.items()):
                 config[key] = cls.resolve_env_variables(value)
-            elif isinstance(value, list):
-                config[key] = [cls.resolve_env_variables(item) if isinstance(item, dict) else item for item in value]
+            return config
+        if isinstance(config, list):
+            return [cls.resolve_env_variables(item) for item in config]
+        if isinstance(config, tuple):
+            return tuple(cls.resolve_env_variables(item) for item in config)
         return config
 
     def get_enabled_mcp_servers(self) -> dict[str, McpServerConfig]:

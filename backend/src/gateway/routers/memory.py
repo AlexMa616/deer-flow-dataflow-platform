@@ -58,7 +58,11 @@ class MemoryConfigResponse(BaseModel):
 
     enabled: bool = Field(..., description="Whether memory is enabled")
     storage_path: str = Field(..., description="Path to memory storage file")
+    storage_backend: str = Field(..., description="Configured memory storage backend")
+    database_url_configured: bool = Field(..., description="Whether a database URL is configured")
+    collection_name: str = Field(..., description="Collection/table name for database-backed memory")
     debounce_seconds: int = Field(..., description="Debounce time for memory updates")
+    max_pending_contexts: int = Field(..., description="Maximum pending memory update contexts")
     max_facts: int = Field(..., description="Maximum number of facts to store")
     fact_confidence_threshold: float = Field(..., description="Minimum confidence threshold for facts")
     injection_enabled: bool = Field(..., description="Whether memory injection is enabled")
@@ -164,7 +168,11 @@ async def get_memory_config_endpoint() -> MemoryConfigResponse:
     return MemoryConfigResponse(
         enabled=config.enabled,
         storage_path=config.storage_path,
+        storage_backend=config.storage_backend,
+        database_url_configured=bool(config.database_url),
+        collection_name=config.collection_name,
         debounce_seconds=config.debounce_seconds,
+        max_pending_contexts=config.max_pending_contexts,
         max_facts=config.max_facts,
         fact_confidence_threshold=config.fact_confidence_threshold,
         injection_enabled=config.injection_enabled,
@@ -191,7 +199,11 @@ async def get_memory_status() -> MemoryStatusResponse:
         config=MemoryConfigResponse(
             enabled=config.enabled,
             storage_path=config.storage_path,
+            storage_backend=config.storage_backend,
+            database_url_configured=bool(config.database_url),
+            collection_name=config.collection_name,
             debounce_seconds=config.debounce_seconds,
+            max_pending_contexts=config.max_pending_contexts,
             max_facts=config.max_facts,
             fact_confidence_threshold=config.fact_confidence_threshold,
             injection_enabled=config.injection_enabled,

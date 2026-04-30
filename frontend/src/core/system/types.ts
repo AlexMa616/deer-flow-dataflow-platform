@@ -18,6 +18,8 @@ export interface MemorySummary {
   facts: number;
   last_updated: string | null;
   storage_path: string;
+  storage_backend: string;
+  max_pending_contexts: number;
 }
 
 export interface ModelSummary {

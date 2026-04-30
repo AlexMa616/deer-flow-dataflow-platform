@@ -8,11 +8,17 @@ export function AlexMark({
   className,
   accent = "#22d3ee",
   compact = false,
+  label = "ALEX",
 }: {
   className?: string;
   accent?: string;
   compact?: boolean;
+  label?: string;
 }) {
+  const normalizedLabel = label.trim().slice(0, 4).toUpperCase() || "AI";
+  const fontSize =
+    normalizedLabel.length <= 2 ? 34 : normalizedLabel.length === 3 ? 31 : 27;
+
   return (
     <div
       className={cn(
@@ -47,13 +53,13 @@ export function AlexMark({
           x="48"
           y="58"
           textAnchor="middle"
-          fontSize="29"
+          fontSize={fontSize}
           fontWeight="800"
-          letterSpacing="2"
+          letterSpacing={normalizedLabel.length <= 2 ? "1" : "2"}
           fill="url(#alex-mark-fill)"
           fontFamily="ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
         >
-          ALEX
+          {normalizedLabel}
         </text>
       </svg>
       <span

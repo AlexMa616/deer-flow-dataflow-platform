@@ -19,4 +19,5 @@ export interface AgentThreadContext extends Record<string, unknown> {
   is_plan_mode: boolean;
   subagent_enabled: boolean;
   max_concurrent_subagents?: number;
+  web_search_enabled?: boolean;
 }
