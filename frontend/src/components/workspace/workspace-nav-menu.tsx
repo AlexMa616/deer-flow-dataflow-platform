@@ -27,6 +27,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
+import { cn } from "@/lib/utils";
 
 import { GithubIcon } from "./github-icon";
 
@@ -69,6 +70,8 @@ export function WorkspaceNavMenu() {
   const [mounted, setMounted] = useState(false);
   const { open: isSidebarOpen } = useSidebar();
   const { t } = useI18n();
+  const compactButtonClass =
+    "mx-auto justify-center rounded-xl text-slate-600 hover:bg-white/85 hover:text-sky-700 group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-0!";
 
   useEffect(() => {
     setMounted(true);
@@ -81,22 +84,29 @@ export function WorkspaceNavMenu() {
         onOpenChange={setSettingsOpen}
         defaultSection={settingsDefaultSection}
       />
-      <SidebarMenu className="w-full">
+      <SidebarMenu className={cn("w-full", !isSidebarOpen && "items-center")}>
         <SidebarMenuItem>
           {mounted ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton
                   size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  tooltip={
+                    isSidebarOpen ? undefined : t.workspace.settingsAndMore
+                  }
+                  className={cn(
+                    "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                    !isSidebarOpen && compactButtonClass,
+                  )}
                 >
                   <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-                align="end"
-                sideOffset={4}
+                align={isSidebarOpen ? "end" : "center"}
+                side={isSidebarOpen ? "top" : "right"}
+                sideOffset={8}
               >
                 <DropdownMenuGroup>
                   <DropdownMenuItem
@@ -160,7 +170,13 @@ export function WorkspaceNavMenu() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <SidebarMenuButton size="lg" className="pointer-events-none">
+            <SidebarMenuButton
+              size="lg"
+              className={cn(
+                "pointer-events-none",
+                !isSidebarOpen && compactButtonClass,
+              )}
+            >
               <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
             </SidebarMenuButton>
           )}

@@ -8,6 +8,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 import { RecentChatList } from "./recent-chat-list";
 import { SystemPulse } from "./system-pulse";
@@ -19,34 +20,58 @@ export function WorkspaceSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { open: isSidebarOpen } = useSidebar();
+  const panelClass =
+    "shrink-0 rounded-2xl border border-sky-200/75 bg-white/80 p-1 shadow-[0_10px_22px_rgba(15,23,42,0.06)] backdrop-blur";
+  const railSectionClass =
+    "mx-auto w-12 rounded-[1.35rem] border border-white/75 bg-white/72 p-1.5 shadow-[0_12px_26px_rgba(15,23,42,0.08)] backdrop-blur";
+
   return (
     <>
       <Sidebar variant="sidebar" collapsible="icon" {...props}>
-        <div className="relative flex h-full flex-col">
+        <div className="relative flex h-full flex-col overflow-hidden">
           <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.23),transparent_52%),radial-gradient(circle_at_bottom,rgba(129,140,248,0.2),transparent_58%),linear-gradient(180deg,#f9fbff,#eef4ff_65%,#f8fbff)]" />
-            <div className="absolute -top-24 right-6 h-48 w-48 rounded-full bg-sky-200/50 blur-3xl" />
-            <div className="absolute -bottom-24 left-6 h-52 w-52 rounded-full bg-indigo-200/40 blur-3xl" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,#eef9ff_0%,#f8fbff_44%,#eef1ff_100%)]" />
+            <div className="absolute inset-y-0 right-0 w-px bg-sky-200/80" />
           </div>
           <div className="relative z-10 flex h-full flex-col">
-            <SidebarHeader className="py-2">
-              <div className="rounded-2xl border border-sky-200/80 bg-white/78 p-2 shadow-[0_14px_34px_rgba(15,23,42,0.08)] backdrop-blur">
+            <SidebarHeader
+              className={cn(isSidebarOpen ? "px-2 py-2" : "px-2 pb-2 pt-4")}
+            >
+              <div
+                className={cn(
+                  isSidebarOpen
+                    ? "rounded-2xl border border-sky-200/75 bg-white/80 p-2 shadow-[0_14px_34px_rgba(15,23,42,0.08)] backdrop-blur"
+                    : "flex flex-col items-center gap-3",
+                )}
+              >
                 <WorkspaceHeader />
               </div>
             </SidebarHeader>
-            <SidebarContent className="gap-3 overflow-x-hidden overflow-y-auto px-2 pb-3 [&>*]:shrink-0">
+            <SidebarContent
+              className={cn(
+                isSidebarOpen
+                  ? "gap-3 overflow-x-hidden overflow-y-auto px-2 pb-3 [&>*]:shrink-0"
+                  : "items-center gap-4 overflow-hidden px-2 py-1",
+              )}
+            >
               {isSidebarOpen && <SystemPulse className="mb-0.5 shrink-0" />}
-              <div className="shrink-0 rounded-2xl border border-sky-200/80 bg-white/78 p-1 shadow-[0_10px_22px_rgba(15,23,42,0.06)] backdrop-blur">
+              <div
+                className={cn(isSidebarOpen ? panelClass : railSectionClass)}
+              >
                 <WorkspaceNavChatList />
               </div>
               {isSidebarOpen && (
-                <div className="shrink-0 rounded-2xl border border-sky-200/80 bg-white/78 p-1 shadow-[0_10px_22px_rgba(15,23,42,0.06)] backdrop-blur">
+                <div className={panelClass}>
                   <RecentChatList />
                 </div>
               )}
             </SidebarContent>
-            <SidebarFooter className="px-2 pb-3">
-              <div className="shrink-0 rounded-2xl border border-sky-200/80 bg-white/78 p-1 shadow-[0_10px_22px_rgba(15,23,42,0.06)] backdrop-blur">
+            <SidebarFooter
+              className={cn(isSidebarOpen ? "px-2 pb-3" : "mt-auto px-2 pb-4")}
+            >
+              <div
+                className={cn(isSidebarOpen ? panelClass : railSectionClass)}
+              >
                 <WorkspaceNavMenu />
               </div>
             </SidebarFooter>
