@@ -20,6 +20,42 @@ import { getThreadErrorDisplay } from "./utils";
 
 const THREAD_HISTORY_STATE_LIMIT = 500;
 
+function stringifyThreadCreateError(error: unknown) {
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return `${error.name} ${error.message}`;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isThreadAlreadyExistsError(error: unknown) {
+  const raw = stringifyThreadCreateError(error);
+  return (
+    raw.includes("409") && /thread .*already exists|already exists/i.test(raw)
+  );
+}
+
+async function ensureThreadExists(threadId: string) {
+  try {
+    await getAPIClient().threads.create({
+      threadId,
+      ifExists: "do_nothing",
+    });
+  } catch (error) {
+    if (!isThreadAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
+}
+
 export function useThreadStream({
   threadId,
   isNewThread,
@@ -111,10 +147,7 @@ export function useSubmitThread({
         throw new Error("Thread ID is not ready. Please try again.");
       }
 
-      await getAPIClient().threads.create({
-        threadId,
-        ifExists: "do_nothing",
-      });
+      await ensureThreadExists(threadId);
 
       // Upload files after the LangGraph thread exists.
       if (message.files && message.files.length > 0) {
@@ -194,10 +227,7 @@ export function useSubmitThread({
           throw error;
         }
 
-        await getAPIClient().threads.create({
-          threadId,
-          ifExists: "do_nothing",
-        });
+        await ensureThreadExists(threadId);
         await thread.submit(submitPayload, submitOptions);
       }
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
