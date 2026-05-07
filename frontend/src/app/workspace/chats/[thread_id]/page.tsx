@@ -35,7 +35,6 @@ import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Tooltip } from "@/components/workspace/tooltip";
 import { Welcome } from "@/components/workspace/welcome";
-import { getAPIClient } from "@/core/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { parseUploadedFiles } from "@/core/messages/utils";
 import { useModels } from "@/core/models/hooks";
@@ -43,7 +42,11 @@ import { useNotification } from "@/core/notification/hooks";
 import { useLocalSettings } from "@/core/settings";
 import { fetchSystemOverview, useSystemOverview } from "@/core/system";
 import { type AgentThread, type AgentThreadState } from "@/core/threads";
-import { useSubmitThread, useThreadStream } from "@/core/threads/hooks";
+import {
+  ensureThreadExists,
+  useSubmitThread,
+  useThreadStream,
+} from "@/core/threads/hooks";
 import {
   containsChineseText,
   getThreadErrorDisplay,
@@ -163,16 +166,30 @@ export default function ChatPage() {
       setStreamError(null);
 
       if (threadIdFromPath === "new") {
-        setThreadId(uuid());
+        const nextThreadId = uuid();
+        try {
+          await ensureThreadExists(nextThreadId);
+        } catch (error) {
+          if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+            return;
+          }
+
+          setThreadId(nextThreadId);
+          setStreamError(getThreadErrorDisplay(error));
+          return;
+        }
+
+        if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+          return;
+        }
+
+        setThreadId(nextThreadId);
         return;
       }
 
       setThreadId(null);
       try {
-        await getAPIClient().threads.create({
-          threadId: threadIdFromPath,
-          ifExists: "do_nothing",
-        });
+        await ensureThreadExists(threadIdFromPath);
 
         if (cancelled || threadBootstrapRequestRef.current !== requestId) {
           return;
@@ -368,7 +385,6 @@ export default function ChatPage() {
   }, [threadId]);
 
   const handleSubmit = useSubmitThread({
-    isNewThread,
     threadId,
     thread,
     threadContext: {

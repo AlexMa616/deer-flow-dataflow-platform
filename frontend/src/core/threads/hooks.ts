@@ -38,12 +38,17 @@ function stringifyThreadCreateError(error: unknown) {
 
 function isThreadAlreadyExistsError(error: unknown) {
   const raw = stringifyThreadCreateError(error);
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? (error as { status?: unknown }).status
+      : undefined;
   return (
-    raw.includes("409") && /thread .*already exists|already exists/i.test(raw)
+    (status === 409 || raw.includes("409")) &&
+    /thread .*already exists|already exists/i.test(raw)
   );
 }
 
-async function ensureThreadExists(threadId: string) {
+export async function ensureThreadExists(threadId: string) {
   try {
     await getAPIClient().threads.create({
       threadId,
@@ -74,7 +79,7 @@ export function useThreadStream({
   const thread = useStream<AgentThreadState>({
     client: getAPIClient(),
     assistantId: "lead_agent",
-    threadId: isNewThread ? undefined : threadId,
+    threadId: threadId ?? undefined,
     reconnectOnMount: !isNewThread,
     // The stream object exposes `history`, so the SDK requires this to stay enabled.
     fetchStateHistory: { limit: THREAD_HISTORY_STATE_LIMIT },
@@ -129,10 +134,8 @@ export function useSubmitThread({
   threadId,
   thread,
   threadContext,
-  isNewThread,
   afterSubmit,
 }: {
-  isNewThread: boolean;
   threadId: string | null | undefined;
   thread: UseStream<AgentThreadState>;
   threadContext: Omit<AgentThreadContext, "thread_id">;
@@ -195,7 +198,7 @@ export function useSubmitThread({
       };
 
       const submitOptions = {
-        threadId: isNewThread ? threadId : undefined,
+        threadId: undefined,
         streamSubgraphs: true,
         streamResumable: true,
         config: {
@@ -233,7 +236,7 @@ export function useSubmitThread({
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
       afterSubmit?.();
     },
-    [thread, isNewThread, threadId, threadContext, queryClient, afterSubmit],
+    [thread, threadId, threadContext, queryClient, afterSubmit],
   );
   return callback;
 }

@@ -50,7 +50,6 @@ import {
 } from "@/components/workspace/artifacts";
 import { InputBox } from "@/components/workspace/input-box";
 import { ThreadContext } from "@/components/workspace/messages/context";
-import { getAPIClient } from "@/core/api";
 import { useArtifactContent } from "@/core/artifacts/hooks";
 import {
   loadArtifactContent,
@@ -66,7 +65,11 @@ import { useLocalSettings } from "@/core/settings";
 import { fetchSystemOverview, useSystemOverview } from "@/core/system";
 import { useTerminalSession } from "@/core/terminal/hooks";
 import { type AgentThreadState } from "@/core/threads";
-import { useSubmitThread, useThreadStream } from "@/core/threads/hooks";
+import {
+  ensureThreadExists,
+  useSubmitThread,
+  useThreadStream,
+} from "@/core/threads/hooks";
 import {
   containsChineseText,
   getThreadErrorDisplay,
@@ -1121,16 +1124,30 @@ function VibeCodingWorkbench() {
       setFinalState(null);
 
       if (threadIdFromPath === "new") {
-        setThreadId(uuid());
+        const nextThreadId = uuid();
+        try {
+          await ensureThreadExists(nextThreadId);
+        } catch (error) {
+          if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+            return;
+          }
+
+          setThreadId(nextThreadId);
+          toast.error(getThreadErrorDisplay(error).message);
+          return;
+        }
+
+        if (cancelled || threadBootstrapRequestRef.current !== requestId) {
+          return;
+        }
+
+        setThreadId(nextThreadId);
         return;
       }
 
       setThreadId(null);
       try {
-        await getAPIClient().threads.create({
-          threadId: threadIdFromPath,
-          ifExists: "do_nothing",
-        });
+        await ensureThreadExists(threadIdFromPath);
 
         if (cancelled || threadBootstrapRequestRef.current !== requestId) {
           return;
@@ -1247,7 +1264,6 @@ function VibeCodingWorkbench() {
   }) as unknown as UseStream<AgentThreadState>;
 
   const handleSubmit = useSubmitThread({
-    isNewThread,
     threadId,
     thread,
     threadContext: {
