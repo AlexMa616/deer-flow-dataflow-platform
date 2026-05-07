@@ -43,6 +43,7 @@ import { useLocalSettings } from "@/core/settings";
 import { fetchSystemOverview, useSystemOverview } from "@/core/system";
 import { type AgentThread, type AgentThreadState } from "@/core/threads";
 import {
+  createThread,
   ensureThreadExists,
   useSubmitThread,
   useThreadStream,
@@ -55,7 +56,6 @@ import {
   titleOfThread,
 } from "@/core/threads/utils";
 import { useUploadStatusStream } from "@/core/uploads/hooks";
-import { uuid } from "@/core/utils/uuid";
 import { env } from "@/env";
 import { fetchMe, getUser, type User } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -166,15 +166,14 @@ export default function ChatPage() {
       setStreamError(null);
 
       if (threadIdFromPath === "new") {
-        const nextThreadId = uuid();
+        let nextThreadId: string;
         try {
-          await ensureThreadExists(nextThreadId);
+          nextThreadId = await createThread();
         } catch (error) {
           if (cancelled || threadBootstrapRequestRef.current !== requestId) {
             return;
           }
 
-          setThreadId(nextThreadId);
           setStreamError(getThreadErrorDisplay(error));
           return;
         }

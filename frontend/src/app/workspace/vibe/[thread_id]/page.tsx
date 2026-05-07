@@ -66,6 +66,7 @@ import { fetchSystemOverview, useSystemOverview } from "@/core/system";
 import { useTerminalSession } from "@/core/terminal/hooks";
 import { type AgentThreadState } from "@/core/threads";
 import {
+  createThread,
   ensureThreadExists,
   useSubmitThread,
   useThreadStream,
@@ -1124,15 +1125,14 @@ function VibeCodingWorkbench() {
       setFinalState(null);
 
       if (threadIdFromPath === "new") {
-        const nextThreadId = uuid();
+        let nextThreadId: string;
         try {
-          await ensureThreadExists(nextThreadId);
+          nextThreadId = await createThread();
         } catch (error) {
           if (cancelled || threadBootstrapRequestRef.current !== requestId) {
             return;
           }
 
-          setThreadId(nextThreadId);
           toast.error(getThreadErrorDisplay(error).message);
           return;
         }

@@ -48,7 +48,43 @@ function isThreadAlreadyExistsError(error: unknown) {
   );
 }
 
+function isThreadNotFoundError(error: unknown) {
+  return getThreadErrorDisplay(error).kind === "thread_not_found";
+}
+
+async function getThreadIfExists(threadId: string) {
+  try {
+    return await getAPIClient().threads.get(threadId);
+  } catch (error) {
+    if (isThreadNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+type SwitchableThreadStream = UseStream<AgentThreadState> & {
+  switchThread?: (threadId: string | null) => void;
+};
+
+function syncStreamThread(
+  thread: UseStream<AgentThreadState>,
+  threadId: string,
+) {
+  (thread as SwitchableThreadStream).switchThread?.(threadId);
+}
+
+export async function createThread() {
+  const thread = await getAPIClient().threads.create();
+  return thread.thread_id;
+}
+
 export async function ensureThreadExists(threadId: string) {
+  const existingThread = await getThreadIfExists(threadId);
+  if (existingThread) {
+    return;
+  }
+
   try {
     await getAPIClient().threads.create({
       threadId,
@@ -59,6 +95,8 @@ export async function ensureThreadExists(threadId: string) {
       throw error;
     }
   }
+
+  await getAPIClient().threads.get(threadId);
 }
 
 export function useThreadStream({
@@ -151,6 +189,7 @@ export function useSubmitThread({
       }
 
       await ensureThreadExists(threadId);
+      syncStreamThread(thread, threadId);
 
       // Upload files after the LangGraph thread exists.
       if (message.files && message.files.length > 0) {
