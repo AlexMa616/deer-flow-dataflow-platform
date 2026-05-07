@@ -107,7 +107,16 @@ export function useSubmitThread({
     async (message: PromptInputMessage) => {
       const text = message.text.trim();
 
-      // Upload files first if any
+      if (!threadId) {
+        throw new Error("Thread ID is not ready. Please try again.");
+      }
+
+      await getAPIClient().threads.create({
+        threadId,
+        ifExists: "do_nothing",
+      });
+
+      // Upload files after the LangGraph thread exists.
       if (message.files && message.files.length > 0) {
         try {
           // Convert FileUIPart to File objects by fetching blob URLs
@@ -137,7 +146,7 @@ export function useSubmitThread({
             (file): file is File => file !== null,
           );
 
-          if (files.length > 0 && threadId) {
+          if (files.length > 0) {
             await uploadFiles(threadId, files);
           }
         } catch (error) {
@@ -147,20 +156,13 @@ export function useSubmitThread({
         }
       }
 
-      if (!isNewThread && threadId) {
-        await getAPIClient().threads.create({
-          threadId,
-          ifExists: "do_nothing",
-        });
-      }
-
       const runContext = {
         ...threadContext,
         thread_id: threadId,
       };
 
       const submitOptions = {
-        threadId: isNewThread ? threadId! : undefined,
+        threadId: isNewThread ? threadId : undefined,
         streamSubgraphs: true,
         streamResumable: true,
         config: {
