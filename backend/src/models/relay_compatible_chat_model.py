@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from collections.abc import Sequence
 from functools import cached_property
 from typing import Any
@@ -27,11 +28,12 @@ Relay timeout mitigation mode is enabled.
 """.strip()
 
 _MAX_INITIAL_MESSAGES = 14
-_MAX_INITIAL_CHARS = 18_000
+_MAX_INITIAL_CHARS = 12_000
 _COMPACT_KEEP_NON_SYSTEM = 8
 _COMPACT_TOTAL_CHARS = 12_000
 _COMPACT_MESSAGE_CHARS = 2_200
 _COMPACT_LAST_HUMAN_CHARS = 5_000
+_COMPACT_RETRY_STATUS_CODES = {404, 413, 414, 422, 504, 524}
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +231,61 @@ class RelayCompatibleChatModel(SimpleChatModel):
 
         return compact_messages
 
+    def _build_direct_fallback_payload_messages(self, messages: list[BaseMessage]) -> list[dict[str, str]]:
+        serialized_messages = [
+            payload
+            for message in messages
+            if (payload := self._message_to_payload(message)) is not None
+        ]
+        latest_content = ""
+        for message in reversed(serialized_messages):
+            if message["role"] == "user":
+                latest_content = message["content"]
+                break
+        if not latest_content and serialized_messages:
+            latest_content = serialized_messages[-1]["content"]
+        if not latest_content:
+            latest_content = "Continue the conversation."
+
+        return [
+            {
+                "role": "system",
+                "content": _TIMEOUT_REDUCTION_NOTE,
+            },
+            {
+                "role": "user",
+                "content": self._clip_text(latest_content, _COMPACT_LAST_HUMAN_CHARS),
+            },
+        ]
+
+    def _request_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._api_key_value() or ''}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        }
+
+    def _post_chat_completion(
+        self,
+        payload: dict[str, Any],
+        *,
+        fresh_client: bool = False,
+    ) -> httpx.Response:
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        if fresh_client:
+            with httpx.Client(timeout=self.request_timeout) as client:
+                return client.post(
+                    url,
+                    headers=self._request_headers(),
+                    json=payload,
+                )
+        return self._http_client.post(
+            url,
+            headers=self._request_headers(),
+            json=payload,
+        )
+
     def _call(
         self,
         messages: list[BaseMessage],
@@ -257,22 +314,18 @@ class RelayCompatibleChatModel(SimpleChatModel):
         )
 
         try:
-            response = self._http_client.post(
-                f"{self.base_url.rstrip('/')}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._api_key_value() or ''}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "User-Agent": "Mozilla/5.0",
-                },
-                json=payload,
-            )
+            response = self._post_chat_completion(payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 524 and not compact_mode:
+            recovered_with_compact = False
+            if (
+                exc.response.status_code in _COMPACT_RETRY_STATUS_CODES
+                and not compact_mode
+            ):
                 fallback_messages = self._build_compact_payload_messages(messages)
                 logger.warning(
-                    "Relay upstream returned 524; retrying once with compact payload: messages=%s chars=%s",
+                    "Relay upstream returned %s; retrying once with compact payload: messages=%s chars=%s",
+                    exc.response.status_code,
                     len(fallback_messages),
                     self._payload_char_count(fallback_messages),
                 )
@@ -282,18 +335,52 @@ class RelayCompatibleChatModel(SimpleChatModel):
                     compact_mode=True,
                     **kwargs,
                 )
-                response = self._http_client.post(
-                    f"{self.base_url.rstrip('/')}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._api_key_value() or ''}",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0",
-                    },
-                    json=payload,
+                try:
+                    response = self._post_chat_completion(payload)
+                    response.raise_for_status()
+                    recovered_with_compact = True
+                except httpx.HTTPStatusError as compact_exc:
+                    if compact_exc.response.status_code not in _COMPACT_RETRY_STATUS_CODES:
+                        raise
+                    exc = compact_exc
+
+            if (
+                not recovered_with_compact
+                and exc.response.status_code in _COMPACT_RETRY_STATUS_CODES
+            ):
+                fallback_messages = self._build_direct_fallback_payload_messages(messages)
+                logger.warning(
+                    "Relay upstream returned %s; retrying once with direct-answer fallback: messages=%s chars=%s",
+                    exc.response.status_code,
+                    len(fallback_messages),
+                    self._payload_char_count(fallback_messages),
                 )
-                response.raise_for_status()
-            else:
+                payload = self._build_payload(
+                    request_messages=fallback_messages,
+                    stop=stop,
+                    compact_mode=True,
+                    **kwargs,
+                )
+                time.sleep(1)
+                for attempt in range(2):
+                    response = self._post_chat_completion(payload, fresh_client=True)
+                    try:
+                        response.raise_for_status()
+                        break
+                    except httpx.HTTPStatusError as fallback_exc:
+                        if (
+                            attempt == 0
+                            and fallback_exc.response.status_code
+                            in _COMPACT_RETRY_STATUS_CODES
+                        ):
+                            logger.warning(
+                                "Relay direct-answer fallback returned %s; retrying after backoff",
+                                fallback_exc.response.status_code,
+                            )
+                            time.sleep(2)
+                            continue
+                        raise
+            elif not recovered_with_compact:
                 raise
 
         data = response.json()

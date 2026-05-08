@@ -6,7 +6,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_SDK_FINGERPRINTED_HOSTS = ("xxxaicode.com",)
+_SDK_FINGERPRINTED_HOSTS = ("xxxaicode.com", "wanai8.com")
 _relay_http_clients: dict[tuple[str, str], tuple[httpx.Client, httpx.AsyncClient]] = {}
 
 

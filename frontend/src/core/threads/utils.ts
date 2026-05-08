@@ -118,6 +118,7 @@ function collectErrorParts(error: unknown): string[] {
 export type ThreadErrorDisplay = {
   kind:
     | "thread_not_found"
+    | "upstream_not_found"
     | "upstream_blocked"
     | "concurrency"
     | "payload_too_large"
@@ -129,8 +130,19 @@ export type ThreadErrorDisplay = {
 
 function isThreadNotFoundRaw(raw: string) {
   return (
-    /thread with id .* not found|thread .* not found/i.test(raw) ||
-    /notfounderror|404[^\d]|not found/i.test(raw)
+    /thread with id .* not found|thread [0-9a-f-]{8,} .*not found|thread [0-9a-f-]{8,} not found/i.test(
+      raw,
+    ) || /"detail"\s*:\s*"thread .* not found"/i.test(raw)
+  );
+}
+
+function isUpstreamNotFoundRaw(raw: string) {
+  return (
+    /openai\.notfounderror|notfounderror/i.test(raw) ||
+    /chat\/completions.*404|404[^\d].*(model|upstream|relay|not found)/i.test(
+      raw,
+    ) ||
+    /model .* not found|the page you requested was not found/i.test(raw)
   );
 }
 
@@ -143,6 +155,16 @@ export function getThreadErrorDisplay(error: unknown): ThreadErrorDisplay {
       title: "当前线程不存在或已失效",
       message:
         "这个线程在当前 LangGraph 运行时里不存在。通常是本地服务重启后，内存中的旧线程状态被清空了。页面会自动尝试恢复同一个 thread_id；如果仍失败，刷新后再试一次即可。",
+      raw,
+    };
+  }
+
+  if (isUpstreamNotFoundRaw(raw)) {
+    return {
+      kind: "upstream_not_found",
+      title: "当前模型接口不可用",
+      message:
+        "线程已经创建成功，但上游模型接口返回了 404。通常是模型名称、base_url 或中转服务路径不匹配；请先切换到 Qwen3.6 Flash/Plus，或检查 config.yaml 中当前模型的配置。",
       raw,
     };
   }

@@ -1331,10 +1331,11 @@ function VibeCodingWorkbench() {
         );
 
       if (blocksChineseContent && hasChineseContent) {
-        toast(
+        toast.error(
           requestGuardrails?.message ??
-            "当前配置的上游模型接口对中文内容支持不稳定，本次将继续尝试发送；如果失败可稍后重试。",
+            "当前模型接口对中文内容支持不稳定，请切换到 Qwen3.6 Flash/Plus 后再发送。",
         );
+        return;
       }
 
       await handleSubmit(nextMessage);

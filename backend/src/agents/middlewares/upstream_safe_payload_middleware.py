@@ -8,7 +8,7 @@ from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import AnyMessage, SystemMessage
 
-_UPSTREAM_HOSTS_REQUIRING_SAFE_PAYLOAD = ("xxxaicode.com",)
+_UPSTREAM_HOSTS_REQUIRING_SAFE_PAYLOAD = ("xxxaicode.com", "wanai8.com")
 logger = logging.getLogger(__name__)
 
 _SAFE_PAYLOAD_PROMPT = """

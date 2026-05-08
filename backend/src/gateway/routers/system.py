@@ -106,7 +106,7 @@ _THREAD_STATS_CACHE: tuple[float, ThreadStats] | None = None
 _VECTOR_SUMMARY_CACHE: tuple[float, VectorSummary] | None = None
 _MEMORY_SUMMARY_CACHE: tuple[float, MemorySummary] | None = None
 _REQUEST_GUARDRAILS_CACHE: tuple[float, RequestGuardrails] | None = None
-_UPSTREAM_HOSTS_BLOCKING_CHINESE = ("xxxaicode.com",)
+_UPSTREAM_HOSTS_BLOCKING_CHINESE = ("xxxaicode.com", "wanai8.com")
 
 
 def _collect_storage_stats(path: Path) -> StorageStats:
